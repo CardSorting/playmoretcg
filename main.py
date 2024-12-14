@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from firebase_admin import auth
-
+import card_generator
 import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 
@@ -90,22 +90,53 @@ def get_template_context(request: Request) -> Dict[str, Any]:
         "firebase_config": FIREBASE_CONFIG
     }
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handle HTTP exceptions gracefully."""
-    if request.headers.get("accept") == "application/json":
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": exc.detail}
-        )
-    # For HTML requests, show an error page
-    context = get_template_context(request)
-    context["error"] = exc.detail
+@app.get("/create", response_class=HTMLResponse)
+async def create_card_form(
+    request: Request,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Admin-only card creation form."""
+    if not user_id or user_id not in ADMIN_USERS:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
     return templates.TemplateResponse(
-        "error.html",
-        context,
-        status_code=exc.status_code
+        "cards/create.html",
+        get_template_context(request)
     )
+
+@app.post("/create")
+async def create_card_handler(
+    request: Request,
+    rarity: str = Form(None),
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Admin-only card creation."""
+    if not user_id or user_id not in ADMIN_USERS:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Generate card data
+        card_data = card_generator.generate_card(rarity)
+        card_data['user_id'] = 'system'  # Created cards start unclaimed
+        
+        # Generate and upload image
+        image_url, b2_url = card_generator.generate_card_image(card_data)
+        filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+        
+        # Create card in Firestore
+        card = firestore_db.create_card(card_data, b2_url, filename)
+        
+        # Redirect to the created card
+        return RedirectResponse(
+            url=f"/cards/{card['id']}",
+            status_code=303
+        )
+    except Exception as e:
+        logger.error(f"Error creating card: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create card"
+        )
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -197,26 +228,16 @@ async def view_card(
         return RedirectResponse(url="/sign-in")
     
     card = firestore_db.get_card(card_id)
-    if not card or card.get('user_id') != user_id:
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+        
+    # Allow admins to view any card, but regular users can only view their own
+    if user_id not in ADMIN_USERS and card.get('user_id') != user_id:
         raise HTTPException(status_code=404, detail="Card not found")
     
     context = get_template_context(request)
     context["card"] = card
     return templates.TemplateResponse("cards/card.html", context)
-
-@app.get("/create", response_class=HTMLResponse)
-async def create_card_form(
-    request: Request,
-    user_id: Optional[str] = Depends(get_current_user)
-):
-    """Admin-only card creation form."""
-    if not user_id or user_id not in ADMIN_USERS:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    return templates.TemplateResponse(
-        "cards/create.html",
-        get_template_context(request)
-    )
 
 @app.get("/packs", response_class=HTMLResponse)
 async def open_pack_form(
@@ -245,11 +266,10 @@ async def open_pack_action(
         # Open pack and get claimed cards
         cards = firestore_db.open_pack(user_id)
         
-        # Redirect to pack result page
-        return RedirectResponse(
-            url=f"/packs/result?{['&'.join(f'card_id={card['id']}' for card in cards)]}",
-            status_code=303
-        )
+        # Build the URL with card IDs
+        card_ids = [f"card_id={card['id']}" for card in cards]
+        url = f"/packs/result?{'&'.join(card_ids)}"
+        return RedirectResponse(url=url, status_code=303)
     except ValueError as e:
         # Handle specific errors like no available cards
         raise HTTPException(status_code=400, detail=str(e))
