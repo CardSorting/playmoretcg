@@ -46,11 +46,32 @@ async def verify_firebase_token(token: Optional[str] = None) -> Optional[str]:
         return None
         
     try:
-        # Verify the ID token
-        decoded_token = auth.verify_id_token(token)
-        return decoded_token['uid']
+        # Verify the ID token with check_revoked=True to ensure token hasn't been revoked
+        decoded_token = auth.verify_id_token(token, check_revoked=True)
+        
+        # Check if token is expired
+        exp = decoded_token.get('exp', 0)
+        import time
+        if exp < time.time():
+            print("Token has expired")
+            return None
+            
+        return decoded_token.get('uid')
+        
+    except auth.RevokedIdTokenError:
+        print("Token has been revoked")
+        return None
+    except auth.ExpiredIdTokenError:
+        print("Token has expired")
+        return None
+    except auth.InvalidIdTokenError:
+        print("Token is invalid")
+        return None
+    except auth.CertificateFetchError:
+        print("Error fetching certificates")
+        return None
     except Exception as e:
-        print(f"Error verifying token: {e}")
+        print(f"Unexpected error verifying token: {e}")
         return None
 
 def get_firebase_user(user_id: str) -> Optional[Dict[str, Any]]:

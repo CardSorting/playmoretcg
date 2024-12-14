@@ -5,23 +5,42 @@
 {% block head %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Clear any existing instances
+        if (ui) {
+            ui.delete();
+        }
+
         const uiConfig = {
             signInOptions: [{
                 provider: firebase.auth.EmailAuthProvider.PROVIDER_ID,
-                requireDisplayName: false
+                requireDisplayName: false,
+                signInMethod: firebase.auth.EmailAuthProvider.EMAIL_PASSWORD_SIGN_IN_METHOD
             }],
-            signInFlow: 'redirect',
+            signInFlow: 'popup',
             callbacks: {
-                signInSuccessWithAuthResult: function(authResult) {
-                    window.location.href = '/';
+                signInSuccessWithAuthResult: function(authResult, redirectUrl) {
+                    // Handle successful sign-in
+																				if (authResult.user) {
+                        return true;
+                    }
                     return false;
+                },
+                signInFailure: function(error) {
+                    // Handle sign-in errors
+                    console.error('Sign-in error:', error);
+                    if (error.code === 'auth/account-exists-with-different-credential') {
+                        // Handle existing account with different credentials
+                        alert('An account already exists with this email. Please sign in with the correct provider.');
+                    }
                 }
             },
             autoUpgradeAnonymousUsers: false,
-            signInSuccessUrl: '/'
+            signInSuccessUrl: '/collection'
         };
 
-        ui.start('#firebaseui-auth-container', uiConfig);
+        // Initialize UI with new config
+        const authUI = new firebaseui.auth.AuthUI(firebase.auth());
+        authUI.start('#firebaseui-auth-container', uiConfig);
     });
 </script>
 

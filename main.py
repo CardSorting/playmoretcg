@@ -52,15 +52,26 @@ async def get_current_user(request: Request, db=Depends(get_db)) -> Optional[str
     
     try:
         user_id = await verify_firebase_token(auth_token)
-        if user_id:
+        if not user_id:
+            logger.warning("Invalid or expired token")
+            return None
+
+        try:
             # Get Firebase user data
             firebase_user = auth.get_user(user_id)
             # Sync with database
             sync_user(db, firebase_user)
             logger.info(f"Authenticated user: {user_id}")
             return user_id
+        except auth.UserNotFoundError:
+            logger.error(f"User {user_id} not found in Firebase")
+            return None
+        except Exception as e:
+            logger.error(f"Error syncing user data: {str(e)}")
+            return None
+            
     except Exception as e:
-        logger.error(f"Authentication error: {str(e)}")
+        logger.error(f"Token verification error: {str(e)}")
         return None
 
 def get_template_context(request: Request) -> dict:

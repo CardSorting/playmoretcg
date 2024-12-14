@@ -32,51 +32,98 @@
         const db = firebase.firestore();
         const ui = new firebaseui.auth.AuthUI(firebase.auth());
 
+        // Token refresh handler
+        async function refreshToken(user) {
+            try {
+                const token = await user.getIdToken(true); // Force token refresh
+                document.cookie = `auth_token=${token}; path=/; SameSite=Strict; max-age=3600`;
+                return token;
+            } catch (error) {
+                console.error('Token refresh error:', error);
+                return null;
+            }
+        }
+
+        let tokenRefreshInterval = null;
+
         // Auth state observer
-        firebase.auth().onAuthStateChanged((user) => {
-            if (user) {
-                // User is signed in
-                user.getIdToken().then((token) => {
-                    document.cookie = `auth_token=${token}; path=/; SameSite=Strict`;
-                });
-                
-                // Update UI
-                const userInfo = document.getElementById('user-info');
-                const authButtons = document.getElementById('auth-buttons');
-                if (userInfo && authButtons) {
-                    userInfo.innerHTML = `
-                        <div class="flex items-center gap-4">
-                            <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                                    <span class="text-white font-medium">${user.email[0].toUpperCase()}</span>
+        firebase.auth().onAuthStateChanged(async (user) => {
+            try {
+                // Clear any existing refresh interval
+                if (tokenRefreshInterval) {
+                    clearInterval(tokenRefreshInterval);
+                    tokenRefreshInterval = null;
+                }
+
+                if (user) {
+                    // User is signed in
+                    const token = await refreshToken(user);
+                    if (!token) {
+                        // Handle token refresh failure
+                        console.error('Failed to refresh token');
+                        await firebase.auth().signOut();
+                        window.location.href = '/sign-in';
+                        return;
+                    }
+
+                    // Set up token refresh interval
+                    tokenRefreshInterval = setInterval(async () => {
+                        const newToken = await refreshToken(user);
+                        if (!newToken) {
+                            if (tokenRefreshInterval) {
+                                clearInterval(tokenRefreshInterval);
+                                tokenRefreshInterval = null;
+                            }
+                            await firebase.auth().signOut();
+                            window.location.href = '/sign-in';
+                        }
+                    }, 3540000); // Refresh every 59 minutes (token expires in 1 hour)
+                    
+                    // Update UI
+                    const userInfo = document.getElementById('user-info');
+                    const authButtons = document.getElementById('auth-buttons');
+                    if (userInfo && authButtons) {
+                        userInfo.innerHTML = `
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                        <span class="text-white font-medium">${user.email[0].toUpperCase()}</span>
+                                    </div>
+                                    <span class="text-sm font-medium">${user.email}</span>
                                 </div>
-                                <span class="text-sm font-medium">${user.email}</span>
+                                <button onclick="signOut()" class="text-sm text-red-600 hover:text-red-700">Sign Out</button>
                             </div>
-                            <button onclick="signOut()" class="text-sm text-red-600 hover:text-red-700">Sign Out</button>
-                        </div>
-                    `;
-                    userInfo.style.display = 'block';
-                    authButtons.style.display = 'none';
+                        `;
+                        userInfo.style.display = 'block';
+                        authButtons.style.display = 'none';
+                    }
+                    
+                    // Show/hide elements
+                    document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'flex');
+                    document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'none');
+                } else {
+                    // User is signed out
+                    document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                    
+                    // Update UI
+                    const userInfo = document.getElementById('user-info');
+                    const authButtons = document.getElementById('auth-buttons');
+                    if (userInfo && authButtons) {
+                        userInfo.style.display = 'none';
+                        authButtons.style.display = 'flex';
+                    }
+                    
+                    // Show/hide elements
+                    document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'none');
+                    document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'flex');
                 }
-                
-                // Show/hide elements
-                document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'flex');
-                document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'none');
-            } else {
-                // User is signed out
-                document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-                
-                // Update UI
-                const userInfo = document.getElementById('user-info');
-                const authButtons = document.getElementById('auth-buttons');
-                if (userInfo && authButtons) {
-                    userInfo.style.display = 'none';
-                    authButtons.style.display = 'flex';
+            } catch (error) {
+                console.error('Auth state change error:', error);
+                // Handle any errors that occurred during the auth state change
+                if (tokenRefreshInterval) {
+                    clearInterval(tokenRefreshInterval);
+                    tokenRefreshInterval = null;
                 }
-                
-                // Show/hide elements
-                document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'none');
-                document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'flex');
             }
         });
 
