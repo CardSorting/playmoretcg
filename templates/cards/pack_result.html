@@ -78,54 +78,8 @@
     }
 </style>
 
-<script>
-    function initializeCard(img) {
-        const rarity = img.getAttribute('data-rarity');
-        switch (rarity) {
-            case 'Mythic Rare':
-                img.classList.add('rarity-mythic');
-                break;
-            case 'Rare':
-                img.classList.add('rarity-rare');
-                break;
-            case 'Uncommon':
-                img.classList.add('rarity-uncommon');
-                break;
-        }
-    }
-
-    function flipCard(index) {
-        const card = document.getElementById(`card-${index}`);
-        card.classList.add('flipped');
-    }
-    
-    function flipAllCards() {
-        const cards = document.querySelectorAll('.card');
-        cards.forEach((card, index) => {
-            setTimeout(() => {
-                card.classList.add('flipped');
-            }, index * 200); // Stagger the flips
-        });
-    }
-    
-    // Auto-reveal cards one by one after a short delay
-    document.addEventListener('DOMContentLoaded', () => {
-        // Initialize card rarity effects
-        document.querySelectorAll('.card-image').forEach(initializeCard);
-        
-        // Setup reveal animations
-        const cardWrappers = document.querySelectorAll('.card-wrapper');
-        cardWrappers.forEach((wrapper, index) => {
-            wrapper.style.opacity = '0';
-            setTimeout(() => {
-                wrapper.classList.add('reveal-animation');
-            }, index * 200); // Stagger the reveals
-        });
-        
-        // Start flipping cards after all are revealed
-        setTimeout(flipAllCards, cardWrappers.length * 200 + 500);
-    });
-</script>
+<!-- Load pack effects script -->
+<script src="/static/js/pack-effects.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -164,4 +118,7 @@
         </a>
     </div>
 </div>
+
+<!-- Include Lightbox -->
+{% include 'cards/lightbox.html' %}
 {% endblock %}

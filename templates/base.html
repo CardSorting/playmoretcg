@@ -6,6 +6,30 @@
     <title>{% block title %}AI Card Creator{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Base styles for 3D effects -->
+    <style>
+        :root {
+            --card-perspective: 1000px;
+        }
+        .preserve-3d {
+            transform-style: preserve-3d;
+            perspective: var(--card-perspective);
+            backface-visibility: hidden;
+            -webkit-transform-style: preserve-3d;
+            -webkit-perspective: var(--card-perspective);
+            -webkit-backface-visibility: hidden;
+        }
+        .mtg-card {
+            transform-style: preserve-3d !important;
+            -webkit-transform-style: preserve-3d !important;
+            perspective: var(--card-perspective) !important;
+            -webkit-perspective: var(--card-perspective) !important;
+            transform: perspective(var(--card-perspective)) rotateX(0) rotateY(0) !important;
+            -webkit-transform: perspective(var(--card-perspective)) rotateX(0) rotateY(0) !important;
+            will-change: transform;
+        }
+    </style>
+    
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -246,5 +270,8 @@
             </div>
         </div>
     </footer>
+
+    <!-- Card Effects Script -->
+    <script src="/static/js/card-effects.js"></script>
 </body>
 </html>

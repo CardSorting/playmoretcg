@@ -1,49 +1,104 @@
 {% extends "base.html" %}
 
-{% block title %}{{ card.name }} - AI Card Creator{% endblock %}
-
 {% block content %}
-<div class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6">
-    <div class="relative aspect-square mb-4">
-        {% if card.local_image_path %}
-            <img src="{{ card.local_image_path }}" alt="{{ card.name }}" class="w-full h-full object-cover rounded-lg">
-        {% else %}
-            <div class="w-full h-full bg-gray-200 flex items-center justify-center rounded-lg">
-                <span class="text-gray-500">No image available</span>
+<div class="flex justify-center items-center min-h-screen">
+    <!-- Responsive Card Layout -->
+    <div id="card-container" class="mtg-card w-[90vw] sm:w-[375px] h-[80vh] sm:h-[525px] relative text-black rounded-[18px] shadow-lg overflow-hidden transition-transform transform hover:scale-105 duration-500 cursor-pointer" onclick="openLightbox('{{ card.images[0].backblaze_url if card.images and card.images[0].backblaze_url else card.local_image_path }}', '{{ card.rarity }}')">
+        <div class="card-frame h-full p-3 flex flex-col">
+            <!-- Header: Card Name and Mana Cost -->
+            <div class="card-header flex justify-between items-center bg-gradient-to-r from-gray-200 to-gray-100 p-2 rounded-t-md mb-1">
+                <h2 class="card-name text-xl font-bold text-shadow">{{ card.name }}</h2>
+                <div class="mana-cost flex space-x-1">
+                    {% if card.manaCost %}
+                        {% for symbol in card.manaCost|replace('{','')|replace('}','')|list %}
+                            <div class="mana-symbol rounded-full flex justify-center items-center text-sm font-bold w-8 h-8
+                                {% if symbol|lower == 'w' %}bg-yellow-200 text-black
+                                {% elif symbol|lower == 'u' %}bg-blue-500 text-white
+                                {% elif symbol|lower == 'b' %}bg-black text-white
+                                {% elif symbol|lower == 'r' %}bg-red-500 text-white
+                                {% elif symbol|lower == 'g' %}bg-green-500 text-white
+                                {% else %}bg-gray-400 text-black{% endif %}">
+                                {{ symbol }}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="mana-symbol text-gray-500">No Mana Cost</div>
+                    {% endif %}
+                </div>
             </div>
-        {% endif %}
-    </div>
-    
-    <div class="space-y-4">
-        <div class="flex justify-between items-center">
-            <h1 class="text-2xl font-bold">{{ card.name }}</h1>
-            <span class="text-gray-600">{{ card.manaCost }}</span>
-        </div>
-        
-        <div class="border-t border-b py-2">
-            <p class="text-lg">{{ card.type }}</p>
-            <p class="text-gray-600">{{ card.color }}</p>
-        </div>
-        
-        <div class="space-y-2">
-            <p class="font-medium">Abilities:</p>
-            <p class="text-gray-700">{{ card.abilities }}</p>
-        </div>
-        
-        {% if card.powerToughness %}
-        <div class="text-right">
-            <span class="font-bold">{{ card.powerToughness }}</span>
-        </div>
-        {% endif %}
-        
-        <div class="italic text-gray-600 border-t pt-2">
-            {{ card.flavorText }}
-        </div>
-        
-        <div class="flex justify-between text-sm text-gray-500 mt-4">
-            <span>{{ card.set_name }} #{{ card.card_number }}</span>
-            <span>{{ card.rarity }}</span>
+
+            <!-- Card Image -->
+            {% if card.images and card.images[0].backblaze_url %}
+                <img src="{{ card.images[0].backblaze_url }}" alt="{{ card.name }}" class="w-full h-[220px] object-cover object-center rounded mb-1" loading="lazy" onerror="this.src='/static/card_images/default_card.png'">
+            {% elif card.local_image_path %}
+                <img src="{{ card.local_image_path }}" alt="{{ card.name }}" class="w-full h-[220px] object-cover object-center rounded mb-1" loading="lazy" onerror="this.src='/static/card_images/default_card.png'">
+            {% else %}
+                <div class="w-full h-[220px] bg-gray-200 flex items-center justify-center rounded mb-1">
+                    <span class="text-gray-500">No image available</span>
+                </div>
+            {% endif %}
+
+            <!-- Card Type -->
+            <div class="card-type bg-gradient-to-r from-gray-200 to-gray-100 p-2 text-sm border-b border-black border-opacity-20 mb-1">
+                {{ card.type }}
+            </div>
+
+            <!-- Card Text: Abilities and Flavor Text -->
+            <div class="card-text bg-gray-100 bg-opacity-90 p-3 rounded flex-grow overflow-y-auto text-sm leading-relaxed">
+                <p class="abilities-text mb-2">{{ card.abilities }}</p>
+                <p class="flavor-text mt-2 italic">{{ card.flavorText }}</p>
+            </div>
+
+            <!-- Footer: Rarity and Power/Toughness -->
+            <div class="card-footer flex justify-between items-center text-white text-xs mt-1 bg-black bg-opacity-50 p-2 rounded-b-md">
+                <span class="rarity-details">{{ card.rarity }} ({{ card.set_name }}-{{ card.card_number }})</span>
+                <span class="power-toughness">{{ card.powerToughness or 'N/A' }}</span>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Include Lightbox -->
+{% include 'cards/lightbox.html' %}
+
+<script>
+async function ensureEffectScriptLoaded() {
+    if (typeof MTGCard3DTiltEffect === 'undefined') {
+        console.log('Loading card effects script...');
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/static/js/card-effects.js';
+            script.onload = () => {
+                console.log('Card effects script loaded successfully');
+                resolve();
+            };
+            script.onerror = () => {
+                console.error('Failed to load card effects script');
+                reject(new Error('Failed to load card effects script'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    return Promise.resolve();
+}
+
+async function initializeCardEffect() {
+    const cardElement = document.getElementById('card-container');
+    if (cardElement) {
+        const cardRarity = '{{ card.rarity }}';
+        if (cardRarity === 'Rare' || cardRarity === 'Mythic Rare') {
+            console.log('Initializing 3D effect for', cardRarity, 'card');
+            try {
+                await ensureEffectScriptLoaded();
+                new MTGCard3DTiltEffect(cardElement);
+                console.log('Card effect initialized successfully');
+            } catch (error) {
+                console.error('Error initializing card effect:', error);
+            }
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initializeCardEffect);
+</script>
 {% endblock %}
