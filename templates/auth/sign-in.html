@@ -50,11 +50,19 @@
                 }
             },
             signInOptions: [
-                firebase.auth.GoogleAuthProvider.PROVIDER_ID
+                {
+                    provider: firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+                    // Disable account selection to always show Google account picker
+                    customParameters: {
+                        prompt: 'select_account'
+                    }
+                }
             ],
             signInFlow: 'popup',
             tosUrl: '/terms',
-            privacyPolicyUrl: '/privacy'
+            privacyPolicyUrl: '/privacy',
+            // Disable auto sign-in
+            credentialHelper: firebaseui.auth.CredentialHelper.NONE
         };
 
         // Initialize the FirebaseUI Widget

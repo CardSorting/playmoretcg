@@ -26,11 +26,6 @@
             appId: "{{ firebase_config.appId }}"
         };
 
-        console.log('Initializing Firebase with config:', {
-            ...firebaseConfig,
-            apiKey: firebaseConfig.apiKey ? '[HIDDEN]' : undefined
-        });
-
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         console.log('Firebase initialized');
@@ -133,7 +128,6 @@
                 }
             } catch (error) {
                 console.error('Auth state change error:', error);
-                // Handle any errors that occurred during the auth state change
                 if (tokenRefreshInterval) {
                     clearInterval(tokenRefreshInterval);
                     tokenRefreshInterval = null;
@@ -185,7 +179,7 @@
                     <div id="auth-buttons" class="auth-hidden">
                         <div class="flex items-center">
                             <a href="/sign-in" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
-                                Sign In
+                                Sign In with Google
                             </a>
                         </div>
                     </div>
