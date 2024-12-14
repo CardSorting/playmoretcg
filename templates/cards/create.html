@@ -92,27 +92,20 @@
             const data = await response.json();
             console.log('Status response:', data); // Debug log
             
-            switch (data.status) {
+            switch (data.state) {
                 case 'completed':
-                    if (data.redirect_url) {
-                        window.location.href = data.redirect_url;
+                    if (data.card_id) {
+                        window.location.href = `/cards/${data.card_id}`;
                     } else {
-                        throw new Error('Missing redirect URL');
+                        throw new Error('Missing card ID');
                     }
                     return;
                     
-                case 'error':
-                    document.getElementById('error-message').textContent = data.error || "An error occurred";
+                case 'failed':
+                    document.getElementById('error-message').textContent = data.error || "Failed to generate card";
                     document.getElementById('error-container').classList.remove('hidden');
                     document.getElementById('loading-container').classList.add('hidden');
                     return;
-                    
-                case 'queued':
-                case 'processing':
-                    updateProgress(data.status);
-                    // Schedule next poll
-                    pollTimeout = setTimeout(() => pollStatus(taskId, startTime), POLL_INTERVAL);
-                    break;
                     
                 case 'not_found':
                     document.getElementById('error-message').textContent = "Task not found";
@@ -120,8 +113,17 @@
                     document.getElementById('loading-container').classList.add('hidden');
                     return;
                     
+                case 'queued':
+                case 'generating':
+                case 'creating_image':
+                case 'saving':
+                    updateProgress(data.state);
+                    // Schedule next poll
+                    pollTimeout = setTimeout(() => pollStatus(taskId, startTime), POLL_INTERVAL);
+                    break;
+                    
                 default:
-                    throw new Error(`Unknown status: ${data.status}`);
+                    throw new Error(`Unknown state: ${data.state}`);
             }
         } catch (error) {
             console.error('Polling error:', error);
@@ -131,21 +133,45 @@
         }
     }
     
-    function updateProgress(status) {
+    function updateProgress(state) {
         const steps = document.querySelectorAll('.step');
         steps.forEach(step => step.classList.remove('active'));
         
-        switch(status) {
+        // Update step text based on state
+        document.getElementById('step-text').textContent = getStateMessage(state);
+        
+        switch(state) {
             case 'queued':
                 steps[0].classList.add('active');
                 break;
-            case 'processing':
+            case 'generating':
                 steps[0].classList.add('active');
                 steps[1].classList.add('active');
                 break;
+            case 'creating_image':
+                steps[0].classList.add('active');
+                steps[1].classList.add('active');
+                steps[2].classList.add('active');
+                break;
+            case 'saving':
             case 'completed':
                 steps.forEach(step => step.classList.add('active'));
                 break;
+        }
+    }
+    
+    function getStateMessage(state) {
+        switch(state) {
+            case 'queued':
+                return 'Waiting in queue...';
+            case 'generating':
+                return 'Generating card attributes...';
+            case 'creating_image':
+                return 'Creating card artwork...';
+            case 'saving':
+                return 'Saving your card...';
+            default:
+                return 'Processing...';
         }
     }
     
@@ -237,20 +263,24 @@
         <div class="progress-steps mb-8">
             <div class="step active">
                 <div class="step-number">1</div>
-                <div class="step-label">Queued</div>
+                <div class="step-label">Queue</div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
-                <div class="step-label">Generating</div>
+                <div class="step-label">Generate</div>
             </div>
             <div class="step">
                 <div class="step-number">3</div>
-                <div class="step-label">Complete</div>
+                <div class="step-label">Artwork</div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-label">Save</div>
             </div>
         </div>
         
         <div class="loading-spinner"></div>
-        <p class="text-center text-gray-600 mt-4">Creating your unique card...</p>
+        <p id="step-text" class="text-center text-gray-600 mt-4">Waiting in queue...</p>
         <p class="text-center text-gray-500 text-sm mt-2">This may take a minute</p>
     </div>
     

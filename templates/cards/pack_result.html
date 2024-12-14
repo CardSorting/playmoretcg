@@ -67,79 +67,64 @@
     .rarity-uncommon {
         box-shadow: 0 0 15px #c0c0c0;
     }
+
+    @keyframes reveal {
+        0% { opacity: 0; transform: scale(0.8); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+
+    .reveal-animation {
+        animation: reveal 0.5s ease-out forwards;
+    }
 </style>
 
 <script>
-    let cardsData = [];
-    
-    async function loadCards() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const cardIds = urlParams.getAll('card_id');
-        
-        try {
-            const cards = await Promise.all(
-                cardIds.map(async id => {
-                    const response = await fetch(`/cards/${id}`);
-                    if (!response.ok) throw new Error(`Failed to load card ${id}`);
-                    return response.json();
-                })
-            );
-            
-            cardsData = cards;
-            displayCards();
-        } catch (error) {
-            console.error('Error loading cards:', error);
-            document.getElementById('error-message').textContent = error.message;
-            document.getElementById('error-container').classList.remove('hidden');
-        }
-    }
-    
-    function displayCards() {
-        const container = document.getElementById('cards-container');
-        
-        // Sort cards by rarity
-        const sortedCards = cardsData.sort((a, b) => {
-            const rarityOrder = ['Mythic Rare', 'Rare', 'Uncommon', 'Common'];
-            return rarityOrder.indexOf(a.rarity) - rarityOrder.indexOf(b.rarity);
-        });
-        
-        container.innerHTML = sortedCards.map((card, index) => `
-            <div class="card-wrapper" onclick="flipCard(${index})">
-                <div class="card" id="card-${index}">
-                    <div class="card-front"></div>
-                    <div class="card-back">
-                        <img 
-                            src="${card.image_url}" 
-                            alt="${card.name}"
-                            class="card-image ${getRarityClass(card.rarity)}"
-                        >
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    }
-    
-    function getRarityClass(rarity) {
+    function initializeCard(img) {
+        const rarity = img.getAttribute('data-rarity');
         switch (rarity) {
-            case 'Mythic Rare': return 'rarity-mythic';
-            case 'Rare': return 'rarity-rare';
-            case 'Uncommon': return 'rarity-uncommon';
-            default: return '';
+            case 'Mythic Rare':
+                img.classList.add('rarity-mythic');
+                break;
+            case 'Rare':
+                img.classList.add('rarity-rare');
+                break;
+            case 'Uncommon':
+                img.classList.add('rarity-uncommon');
+                break;
         }
     }
-    
+
     function flipCard(index) {
         const card = document.getElementById(`card-${index}`);
-        card.classList.toggle('flipped');
+        card.classList.add('flipped');
     }
     
     function flipAllCards() {
         const cards = document.querySelectorAll('.card');
-        cards.forEach(card => card.classList.add('flipped'));
+        cards.forEach((card, index) => {
+            setTimeout(() => {
+                card.classList.add('flipped');
+            }, index * 200); // Stagger the flips
+        });
     }
     
-    // Load cards when page loads
-    document.addEventListener('DOMContentLoaded', loadCards);
+    // Auto-reveal cards one by one after a short delay
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialize card rarity effects
+        document.querySelectorAll('.card-image').forEach(initializeCard);
+        
+        // Setup reveal animations
+        const cardWrappers = document.querySelectorAll('.card-wrapper');
+        cardWrappers.forEach((wrapper, index) => {
+            wrapper.style.opacity = '0';
+            setTimeout(() => {
+                wrapper.classList.add('reveal-animation');
+            }, index * 200); // Stagger the reveals
+        });
+        
+        // Start flipping cards after all are revealed
+        setTimeout(flipAllCards, cardWrappers.length * 200 + 500);
+    });
 </script>
 {% endblock %}
 
@@ -152,16 +137,22 @@
         </button>
     </div>
     
-    <div id="cards-container" class="card-grid">
-        <!-- Cards will be inserted here by JavaScript -->
-    </div>
-    
-    <!-- Error Container -->
-    <div id="error-container" class="hidden mt-8">
-        <div class="bg-red-50 p-4 rounded-md">
-            <h3 class="text-red-800 font-medium mb-2">Error</h3>
-            <p id="error-message" class="text-red-700"></p>
+    <div class="card-grid">
+        {% for card in cards %}
+        <div class="card-wrapper">
+            <div class="card" id="card-{{ loop.index0 }}" onclick="flipCard({{ loop.index0 }})">
+                <div class="card-front"></div>
+                <div class="card-back">
+                    <img 
+                        src="{{ card.images[0].backblaze_url if card.images else '/static/default-card.png' }}"
+                        alt="{{ card.name }}"
+                        class="card-image"
+                        data-rarity="{{ card.rarity }}"
+                    >
+                </div>
+            </div>
         </div>
+        {% endfor %}
     </div>
     
     <div class="text-center mt-8">

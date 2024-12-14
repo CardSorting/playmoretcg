@@ -1,20 +1,20 @@
 from firebase_admin import firestore, credentials, initialize_app
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-import os
-from dotenv import load_dotenv
-from models import Rarity  # Import Rarity from models instead of defining it here
+import random
+import logging
+from models import Rarity
 
-# Load environment variables
-load_dotenv()
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# Initialize Firebase Admin SDK if not already initialized
-cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
-if not cred_path:
-    raise ValueError("FIREBASE_CREDENTIALS_PATH environment variable is not set")
-
+# Initialize Firebase Admin SDK
 try:
-    cred = credentials.Certificate(cred_path)
+    cred = credentials.Certificate('cred/playmoretcg-774b1-firebase-adminsdk-dnfs3-c0010bde40.json')
     initialize_app(cred)
 except ValueError:
     # App already initialized
@@ -34,18 +34,6 @@ def user_to_dict(user_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def card_to_dict(card_data: Dict[str, Any]) -> Dict[str, Any]:
     """Convert card data to Firestore format."""
-    # Convert rarity enum to string if present
-    rarity = card_data.get('rarity')
-    if isinstance(rarity, Rarity):
-        rarity = rarity.value
-    elif isinstance(rarity, str):
-        try:
-            # Try to convert string to enum value
-            rarity = Rarity[rarity.upper().replace(' ', '_')].value
-        except KeyError:
-            # If invalid rarity string, default to Common
-            rarity = Rarity.COMMON.value
-
     return {
         'name': card_data.get('name'),
         'manaCost': card_data.get('manaCost'),
@@ -53,7 +41,7 @@ def card_to_dict(card_data: Dict[str, Any]) -> Dict[str, Any]:
         'color': card_data.get('color'),
         'abilities': card_data.get('abilities'),
         'flavorText': card_data.get('flavorText'),
-        'rarity': rarity,
+        'rarity': card_data.get('rarity'),
         'set_name': card_data.get('set_name'),
         'card_number': card_data.get('card_number'),
         'created_at': card_data.get('created_at', datetime.utcnow()),
@@ -133,6 +121,103 @@ def get_user_cards(user_id: str) -> List[Dict[str, Any]]:
         cards.append(card_data)
     return cards
 
+def get_random_cards(limit: int = 6) -> List[Dict[str, Any]]:
+    """Get random cards."""
+    cards = list(db.collection('cards').stream())
+    selected = random.sample(cards, min(limit, len(cards)))
+    return [{**doc.to_dict(), 'id': doc.id} for doc in selected]
+
+def get_random_cards_by_rarity(rarity: str, count: int = 1, exclude_ids: List[str] = None) -> List[Dict[str, Any]]:
+    """Get random unclaimed cards of a specific rarity."""
+    try:
+        # Get all unclaimed cards of the specified rarity
+        query = db.collection('cards').where('rarity', '==', rarity).where('user_id', '==', 'system')
+        
+        if exclude_ids:
+            # Exclude already selected cards
+            query = query.where(firestore.FieldPath.document_id(), 'not-in', exclude_ids)
+        
+        cards = list(query.stream())
+        
+        if not cards:
+            raise ValueError(f"No available {rarity} cards")
+            
+        # Randomly select the requested number of cards
+        selected = random.sample(cards, min(count, len(cards)))
+        return [{**doc.to_dict(), 'id': doc.id} for doc in selected]
+        
+    except Exception as e:
+        logger.error(f"Error getting random {rarity} cards: {e}")
+        raise
+
+def claim_card(card_id: str, user_id: str) -> Dict[str, Any]:
+    """Claim a card for a user."""
+    try:
+        card_ref = db.collection('cards').document(card_id)
+        card = card_ref.get()
+        
+        if not card.exists:
+            raise ValueError(f"Card {card_id} not found")
+            
+        card_data = card.to_dict()
+        if card_data['user_id'] != 'system':
+            raise ValueError(f"Card {card_id} is already claimed")
+            
+        # Update the card with the new user_id
+        card_ref.update({
+            'user_id': user_id,
+            'claimed_at': datetime.utcnow()
+        })
+        
+        # Get the updated card
+        updated_card = card_ref.get()
+        result = updated_card.to_dict()
+        result['id'] = card_id
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error claiming card {card_id} for user {user_id}: {e}")
+        raise
+
+def open_pack(user_id: str) -> List[Dict[str, Any]]:
+    """Open a pack of cards for a user."""
+    try:
+        pack_cards = []
+        claimed_ids = []
+        
+        # Get one rare/mythic rare card (15% chance of mythic)
+        is_mythic = random.random() < 0.15
+        rarity = Rarity.MYTHIC_RARE.value if is_mythic else Rarity.RARE.value
+        rare_cards = get_random_cards_by_rarity(rarity, 1)
+        for card in rare_cards:
+            claimed = claim_card(card['id'], user_id)
+            pack_cards.append(claimed)
+            claimed_ids.append(card['id'])
+        
+        # Get three uncommon cards
+        uncommon_cards = get_random_cards_by_rarity(Rarity.UNCOMMON.value, 3, claimed_ids)
+        for card in uncommon_cards:
+            claimed = claim_card(card['id'], user_id)
+            pack_cards.append(claimed)
+            claimed_ids.append(card['id'])
+        
+        # Get six common cards
+        common_cards = get_random_cards_by_rarity(Rarity.COMMON.value, 6, claimed_ids)
+        for card in common_cards:
+            claimed = claim_card(card['id'], user_id)
+            pack_cards.append(claimed)
+            claimed_ids.append(card['id'])
+        
+        # Sort cards by rarity
+        return sorted(
+            pack_cards,
+            key=lambda x: [Rarity.MYTHIC_RARE.value, Rarity.RARE.value, Rarity.UNCOMMON.value, Rarity.COMMON.value].index(x['rarity'])
+        )
+        
+    except Exception as e:
+        logger.error(f"Error opening pack for user {user_id}: {e}")
+        raise
+
 def delete_card(card_id: str, user_id: str) -> bool:
     """Delete a card."""
     card_ref = db.collection('cards').document(card_id)
@@ -142,54 +227,3 @@ def delete_card(card_id: str, user_id: str) -> bool:
         card_ref.delete()
         return True
     return False
-
-def get_random_cards(limit: int = 6) -> List[Dict[str, Any]]:
-    """Get random cards."""
-    # Note: Firestore doesn't support random queries directly
-    # This is a simple implementation that gets all cards and randomly selects from them
-    # For production, consider implementing a more efficient solution
-    cards = list(db.collection('cards').stream())
-    
-    import random
-    selected = random.sample(cards, min(limit, len(cards)))
-    
-    return [{**doc.to_dict(), 'id': doc.id} for doc in selected]
-
-# Migration function
-def migrate_from_sqlite(sqlite_session):
-    """Migrate data from SQLite to Firestore."""
-    from models import User, Card, CardImage
-    
-    # Migrate users
-    users = sqlite_session.query(User).all()
-    for user in users:
-        user_data = {
-            'email': user.email,
-            'display_name': user.display_name,
-            'created_at': user.created_at,
-            'last_login': user.last_login
-        }
-        create_user(user.id, user_data)
-    
-    # Migrate cards
-    cards = sqlite_session.query(Card).all()
-    for card in cards:
-        card_data = {
-            'name': card.name,
-            'manaCost': card.manaCost,
-            'type': card.type,
-            'color': card.color,
-            'abilities': card.abilities,
-            'flavorText': card.flavorText,
-            'rarity': card.rarity.value,
-            'set_name': card.set_name,
-            'card_number': card.card_number,
-            'created_at': card.created_at,
-            'user_id': card.user_id,
-            'images': [{
-                'backblaze_url': image.backblaze_url,
-                'filename': image.filename,
-                'created_at': image.created_at
-            } for image in card.images]
-        }
-        create_card(card_data)
