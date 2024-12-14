@@ -9,15 +9,16 @@ from typing import Optional
 from fastapi import FastAPI, Request, Depends, HTTPException, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from database import get_db, sync_user, get_user_cards, create_card_for_user
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from card_generator import generate_card, generate_card_image, open_pack
-from models import Card, CardImage
+from models import Card, CardImage, sync_user_from_firebase
 
 # Configure logging
 logging.basicConfig(
@@ -43,7 +44,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
 
-async def get_current_user(request: Request, db=Depends(get_db)) -> Optional[str]:
+async def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[str]:
     """Get the current user from the Firebase ID token and sync with database."""
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -87,7 +88,7 @@ async def home(request: Request):
     return templates.TemplateResponse("landing.html", get_template_context(request))
 
 @app.get("/explore", response_class=HTMLResponse)
-async def explore(request: Request, db=Depends(get_db)):
+async def explore(request: Request, db: Session = Depends(get_db)):
     """Public explore page."""
     context = get_template_context(request)
     # Get some random cards to display
@@ -103,7 +104,7 @@ async def about(request: Request):
 @app.get("/collection", response_class=HTMLResponse)
 async def collection(
     request: Request,
-    db=Depends(get_db),
+    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """User's card collection."""
@@ -130,11 +131,36 @@ async def sign_in(request: Request):
         logger.error(f"Error in sign-in route: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.post("/sign-in")
+async def sign_in_post(request: Request, db: Session = Depends(get_db)):
+    """Handle user synchronization after successful authentication."""
+    try:
+        # Get the token from Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        
+        token = auth_header.split(' ')[1]
+        
+        # Verify the token and get user ID
+        user_id = await verify_firebase_token(token)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Get Firebase user data and sync with database
+        firebase_user = auth.get_user(user_id)
+        sync_user_from_firebase(db, user_id)
+        
+        return JSONResponse({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error in sign-in post route: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/cards/{card_id}", response_class=HTMLResponse)
 async def view_card(
     request: Request,
     card_id: int,
-    db=Depends(get_db),
+    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """View a specific card."""
@@ -167,7 +193,7 @@ async def create_card_form(
 async def create_card_handler(
     request: Request,
     rarity: str = Form(None),
-    db=Depends(get_db),
+    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """Handle card creation."""
@@ -207,7 +233,7 @@ async def open_pack_form(
 @app.post("/packs")
 async def open_pack_action(
     request: Request,
-    db=Depends(get_db),
+    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """Handle pack opening."""

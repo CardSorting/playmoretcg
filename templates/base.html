@@ -26,15 +26,19 @@
             appId: "{{ firebase_config.appId }}"
         };
 
+        console.log('Initializing Firebase with config:', {
+            ...firebaseConfig,
+            apiKey: firebaseConfig.apiKey ? '[HIDDEN]' : undefined
+        });
+
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        console.log('Firebase initialized');
 
         // Token refresh handler
         async function refreshToken(user) {
             try {
-                const token = await user.getIdToken(true); // Force token refresh
+                const token = await user.getIdToken(true);
                 document.cookie = `auth_token=${token}; path=/; SameSite=Strict; max-age=3600`;
                 return token;
             } catch (error) {
@@ -48,6 +52,8 @@
         // Auth state observer
         firebase.auth().onAuthStateChanged(async (user) => {
             try {
+                console.log('Auth state changed:', user ? 'User logged in' : 'User logged out');
+                
                 // Clear any existing refresh interval
                 if (tokenRefreshInterval) {
                     clearInterval(tokenRefreshInterval);
@@ -58,7 +64,6 @@
                     // User is signed in
                     const token = await refreshToken(user);
                     if (!token) {
-                        // Handle token refresh failure
                         console.error('Failed to refresh token');
                         await firebase.auth().signOut();
                         window.location.href = '/sign-in?mode=signin';
@@ -134,7 +139,6 @@
 
         function signOut() {
             firebase.auth().signOut().then(() => {
-                // Redirect to explore page after sign out
                 window.location.href = '/explore';
             }).catch((error) => {
                 console.error('Sign Out Error:', error);
