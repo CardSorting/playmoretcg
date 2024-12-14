@@ -15,7 +15,7 @@ from firebase_admin import auth
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from database import get_db, sync_user, get_user_cards, create_card_for_user
+from database import get_db, sync_user, get_user_cards, create_card_for_user, get_random_cards
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from card_generator import generate_card, generate_card_image, open_pack
 from models import Card, CardImage, sync_user_from_firebase
@@ -92,7 +92,7 @@ async def explore(request: Request, db: Session = Depends(get_db)):
     """Public explore page."""
     context = get_template_context(request)
     # Get some random cards to display
-    cards = db.query(Card).order_by(func.random()).limit(6).all()
+    cards = get_random_cards(db)
     context["cards"] = cards
     return templates.TemplateResponse("explore.html", context)
 
@@ -149,7 +149,7 @@ async def sign_in_post(request: Request, db: Session = Depends(get_db)):
         
         # Get Firebase user data and sync with database
         firebase_user = auth.get_user(user_id)
-        sync_user_from_firebase(db, user_id)
+        sync_user(db, firebase_user)
         
         return JSONResponse({"status": "success"})
     except Exception as e:
