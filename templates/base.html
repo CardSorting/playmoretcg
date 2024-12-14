@@ -35,6 +35,10 @@
         firebase.initializeApp(firebaseConfig);
         console.log('Firebase initialized');
 
+        // Initialize Firestore
+        const db = firebase.firestore();
+        console.log('Firestore initialized');
+
         // Token refresh handler
         async function refreshToken(user) {
             try {
@@ -66,7 +70,7 @@
                     if (!token) {
                         console.error('Failed to refresh token');
                         await firebase.auth().signOut();
-                        window.location.href = '/sign-in?mode=signin';
+                        window.location.href = '/sign-in';
                         return;
                     }
 
@@ -79,7 +83,7 @@
                                 tokenRefreshInterval = null;
                             }
                             await firebase.auth().signOut();
-                            window.location.href = '/sign-in?mode=signin';
+                            window.location.href = '/sign-in';
                         }
                     }, 3540000); // Refresh every 59 minutes (token expires in 1 hour)
                     
@@ -124,7 +128,7 @@
                     // If we're on a protected page, redirect to sign-in
                     const protectedPaths = ['/collection', '/create', '/packs'];
                     if (protectedPaths.some(path => window.location.pathname.startsWith(path))) {
-                        window.location.href = '/sign-in?mode=signin';
+                        window.location.href = '/sign-in';
                     }
                 }
             } catch (error) {
@@ -179,12 +183,9 @@
                         </div>
                     </div>
                     <div id="auth-buttons" class="auth-hidden">
-                        <div class="flex items-center space-x-4">
-                            <a href="/sign-in?mode=signin" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                        <div class="flex items-center">
+                            <a href="/sign-in" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
                                 Sign In
-                            </a>
-                            <a href="/sign-in?mode=signup" class="text-gray-600 hover:text-gray-900">
-                                Create Account
                             </a>
                         </div>
                     </div>

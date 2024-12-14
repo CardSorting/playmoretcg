@@ -12,13 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth
-from sqlalchemy import func
-from sqlalchemy.orm import Session
 
-from database import get_db, sync_user, get_user_cards, create_card_for_user, get_random_cards
+import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from card_generator import generate_card, generate_card_image, open_pack
-from models import Card, CardImage, sync_user_from_firebase
 
 # Configure logging
 logging.basicConfig(
@@ -44,8 +41,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
 
-async def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[str]:
-    """Get the current user from the Firebase ID token and sync with database."""
+async def get_current_user(request: Request) -> Optional[str]:
+    """Get the current user from the Firebase ID token and sync with Firestore."""
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
         logger.debug("No auth token found")
@@ -60,8 +57,13 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> O
         try:
             # Get Firebase user data
             firebase_user = auth.get_user(user_id)
-            # Sync with database
-            sync_user(db, firebase_user)
+            # Sync with Firestore
+            user_data = {
+                'email': firebase_user.email,
+                'display_name': firebase_user.display_name,
+                'last_login': datetime.utcnow()
+            }
+            firestore_db.update_user(user_id, user_data)
             logger.info(f"Authenticated user: {user_id}")
             return user_id
         except auth.UserNotFoundError:
@@ -88,11 +90,11 @@ async def home(request: Request):
     return templates.TemplateResponse("landing.html", get_template_context(request))
 
 @app.get("/explore", response_class=HTMLResponse)
-async def explore(request: Request, db: Session = Depends(get_db)):
+async def explore(request: Request):
     """Public explore page."""
     context = get_template_context(request)
     # Get some random cards to display
-    cards = get_random_cards(db)
+    cards = firestore_db.get_random_cards()
     context["cards"] = cards
     return templates.TemplateResponse("explore.html", context)
 
@@ -104,7 +106,6 @@ async def about(request: Request):
 @app.get("/collection", response_class=HTMLResponse)
 async def collection(
     request: Request,
-    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """User's card collection."""
@@ -112,7 +113,7 @@ async def collection(
         return RedirectResponse(url="/sign-in")
     
     try:
-        cards = get_user_cards(db, user_id)
+        cards = firestore_db.get_user_cards(user_id)
         context = get_template_context(request)
         context["cards"] = cards
         return templates.TemplateResponse("cards/list.html", context)
@@ -132,7 +133,7 @@ async def sign_in(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/sign-in")
-async def sign_in_post(request: Request, db: Session = Depends(get_db)):
+async def sign_in_post(request: Request):
     """Handle user synchronization after successful authentication."""
     try:
         # Get the token from Authorization header
@@ -147,9 +148,14 @@ async def sign_in_post(request: Request, db: Session = Depends(get_db)):
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # Get Firebase user data and sync with database
+        # Get Firebase user data and sync with Firestore
         firebase_user = auth.get_user(user_id)
-        sync_user(db, firebase_user)
+        user_data = {
+            'email': firebase_user.email,
+            'display_name': firebase_user.display_name,
+            'last_login': datetime.utcnow()
+        }
+        firestore_db.create_user(user_id, user_data)
         
         return JSONResponse({"status": "success"})
     except Exception as e:
@@ -159,16 +165,15 @@ async def sign_in_post(request: Request, db: Session = Depends(get_db)):
 @app.get("/cards/{card_id}", response_class=HTMLResponse)
 async def view_card(
     request: Request,
-    card_id: int,
-    db: Session = Depends(get_db),
+    card_id: str,
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """View a specific card."""
     if not user_id:
         return RedirectResponse(url="/sign-in")
     
-    card = db.query(Card).filter(Card.id == card_id, Card.user_id == user_id).first()
-    if not card:
+    card = firestore_db.get_card(card_id)
+    if not card or card.get('user_id') != user_id:
         raise HTTPException(status_code=404, detail="Card not found")
     
     context = get_template_context(request)
@@ -193,7 +198,6 @@ async def create_card_form(
 async def create_card_handler(
     request: Request,
     rarity: str = Form(None),
-    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """Handle card creation."""
@@ -203,15 +207,16 @@ async def create_card_handler(
     try:
         # Generate card data
         card_data = generate_card(rarity)
+        card_data['user_id'] = user_id
         
         # Generate and upload image
         image_url, b2_url = generate_card_image(card_data)
         filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
         
         # Create card with image
-        card = create_card_for_user(db, user_id, card_data, b2_url, filename)
+        card = firestore_db.create_card(card_data, b2_url, filename)
         
-        return RedirectResponse(url=f"/cards/{card.id}", status_code=303)
+        return RedirectResponse(url=f"/cards/{card['id']}", status_code=303)
     except Exception as e:
         logger.error(f"Error creating card: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -233,7 +238,6 @@ async def open_pack_form(
 @app.post("/packs")
 async def open_pack_action(
     request: Request,
-    db: Session = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """Handle pack opening."""
@@ -245,12 +249,15 @@ async def open_pack_action(
         created_cards = []
         
         for card_data in pack_cards:
+            # Add user_id to card data
+            card_data['user_id'] = user_id
+            
             # Generate and upload image
             image_url, b2_url = generate_card_image(card_data)
             filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
             
             # Create card with image
-            card = create_card_for_user(db, user_id, card_data, b2_url, filename)
+            card = firestore_db.create_card(card_data, b2_url, filename)
             created_cards.append(card)
         
         context = get_template_context(request)
