@@ -2,46 +2,175 @@
 
 {% block title %}Pack Results - AI Card Creator{% endblock %}
 
-{% block content %}
-<div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold mb-6">Your Pack Results</h1>
+{% block head %}
+<style>
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {% for card in cards %}
-        <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
-            <a href="/cards/{{ card.id }}" class="block">
-                {% if card.local_image_path %}
-                <div class="aspect-square">
-                    <img src="{{ card.local_image_path }}" alt="{{ card.name }}" class="w-full h-full object-cover">
-                </div>
-                {% else %}
-                <div class="aspect-square bg-gray-200 flex items-center justify-center">
-                    <span class="text-gray-500">No image available</span>
-                </div>
-                {% endif %}
-                
-                <div class="p-4">
-                    <div class="flex justify-between items-start">
-                        <h2 class="text-lg font-semibold">{{ card.name }}</h2>
-                        <span class="text-gray-600">{{ card.manaCost }}</span>
+    .card-wrapper {
+        aspect-ratio: 7/10;
+        perspective: 1000px;
+        cursor: pointer;
+    }
+
+    .card {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+        transition: transform 0.6s;
+    }
+
+    .card.flipped {
+        transform: rotateY(180deg);
+    }
+
+    .card-front, .card-back {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-front {
+        background-color: #2563eb;
+        background-image: url('/static/card-back.png');
+        background-size: cover;
+        background-position: center;
+    }
+
+    .card-back {
+        transform: rotateY(180deg);
+    }
+
+    .card-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 10px;
+    }
+
+    .rarity-mythic {
+        box-shadow: 0 0 15px #ff4d4d;
+    }
+
+    .rarity-rare {
+        box-shadow: 0 0 15px #ffd700;
+    }
+
+    .rarity-uncommon {
+        box-shadow: 0 0 15px #c0c0c0;
+    }
+</style>
+
+<script>
+    let cardsData = [];
+    
+    async function loadCards() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const cardIds = urlParams.getAll('card_id');
+        
+        try {
+            const cards = await Promise.all(
+                cardIds.map(async id => {
+                    const response = await fetch(`/cards/${id}`);
+                    if (!response.ok) throw new Error(`Failed to load card ${id}`);
+                    return response.json();
+                })
+            );
+            
+            cardsData = cards;
+            displayCards();
+        } catch (error) {
+            console.error('Error loading cards:', error);
+            document.getElementById('error-message').textContent = error.message;
+            document.getElementById('error-container').classList.remove('hidden');
+        }
+    }
+    
+    function displayCards() {
+        const container = document.getElementById('cards-container');
+        
+        // Sort cards by rarity
+        const sortedCards = cardsData.sort((a, b) => {
+            const rarityOrder = ['Mythic Rare', 'Rare', 'Uncommon', 'Common'];
+            return rarityOrder.indexOf(a.rarity) - rarityOrder.indexOf(b.rarity);
+        });
+        
+        container.innerHTML = sortedCards.map((card, index) => `
+            <div class="card-wrapper" onclick="flipCard(${index})">
+                <div class="card" id="card-${index}">
+                    <div class="card-front"></div>
+                    <div class="card-back">
+                        <img 
+                            src="${card.image_url}" 
+                            alt="${card.name}"
+                            class="card-image ${getRarityClass(card.rarity)}"
+                        >
                     </div>
-                    
-                    <p class="text-gray-600 text-sm mt-1">{{ card.type }}</p>
-                    
-                    <div class="flex justify-between items-center mt-2 text-sm">
-                        <span class="text-gray-500">{{ card.set_name }} #{{ card.card_number }}</span>
-                        <span class="px-2 py-1 rounded text-xs font-semibold
-                            {% if card.rarity == 'Common' %}bg-gray-200 text-gray-700
-                            {% elif card.rarity == 'Uncommon' %}bg-green-200 text-green-700
-                            {% elif card.rarity == 'Rare' %}bg-blue-200 text-blue-700
-                            {% else %}bg-orange-200 text-orange-700{% endif %}">
-                            {{ card.rarity }}
-                        </span>
-                    </div>
                 </div>
-            </a>
+            </div>
+        `).join('');
+    }
+    
+    function getRarityClass(rarity) {
+        switch (rarity) {
+            case 'Mythic Rare': return 'rarity-mythic';
+            case 'Rare': return 'rarity-rare';
+            case 'Uncommon': return 'rarity-uncommon';
+            default: return '';
+        }
+    }
+    
+    function flipCard(index) {
+        const card = document.getElementById(`card-${index}`);
+        card.classList.toggle('flipped');
+    }
+    
+    function flipAllCards() {
+        const cards = document.querySelectorAll('.card');
+        cards.forEach(card => card.classList.add('flipped'));
+    }
+    
+    // Load cards when page loads
+    document.addEventListener('DOMContentLoaded', loadCards);
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold mb-4">Your Pack Results</h1>
+        <button onclick="flipAllCards()" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+            Reveal All Cards
+        </button>
+    </div>
+    
+    <div id="cards-container" class="card-grid">
+        <!-- Cards will be inserted here by JavaScript -->
+    </div>
+    
+    <!-- Error Container -->
+    <div id="error-container" class="hidden mt-8">
+        <div class="bg-red-50 p-4 rounded-md">
+            <h3 class="text-red-800 font-medium mb-2">Error</h3>
+            <p id="error-message" class="text-red-700"></p>
         </div>
-        {% endfor %}
+    </div>
+    
+    <div class="text-center mt-8">
+        <a href="/packs" class="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition-colors inline-block">
+            Open Another Pack
+        </a>
+        <a href="/collection" class="ml-4 text-blue-600 hover:text-blue-800">
+            View Collection
+        </a>
     </div>
 </div>
 {% endblock %}

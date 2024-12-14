@@ -59,6 +59,10 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
     if isinstance(card_data['rarity'], str):
         card_data['rarity'] = Rarity[card_data['rarity'].upper().replace(' ', '_')]
 
+    # Convert rarity enum to string value for Firestore
+    if isinstance(card_data['rarity'], Rarity):
+        card_data['rarity'] = card_data['rarity'].value
+
 def get_default_value_for_field(field: str) -> Any:
     """Provide default values for missing card fields."""
     default_values = {
@@ -68,7 +72,7 @@ def get_default_value_for_field(field: str) -> Any:
         'color': 'Colorless',
         'abilities': 'No abilities',
         'flavorText': 'No flavor text',
-        'rarity': Rarity.COMMON,
+        'rarity': Rarity.COMMON.value,  # Return string value instead of enum
         'powerToughness': 'N/A'
     }
     return default_values.get(field, 'Unknown')
@@ -80,6 +84,13 @@ def get_next_set_name_and_number() -> Tuple[str, int]:
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(3))
 def generate_card(rarity: str = None) -> Dict[str, Any]:
     """Generate a card with optional rarity."""
+    # If rarity is "Rare", randomly decide if it should be Mythic Rare
+    if rarity == "Rare":
+        probabilities = get_rarity_probabilities()
+        mythic_chance = probabilities[Rarity.MYTHIC_RARE] / (probabilities[Rarity.RARE] + probabilities[Rarity.MYTHIC_RARE])
+        if random.random() < mythic_chance:
+            rarity = "Mythic Rare"
+
     prompt = generate_card_prompt(rarity)
 
     try:
@@ -109,7 +120,7 @@ def generate_card_prompt(rarity: str = None) -> str:
     return (
         f"Create a unique Magic: The Gathering card with these attributes:\n"
         "- Name: A creative, thematic name\n"
-        "- ManaCost: Using curly braces (e.g., {{2}}{{W}}{{U}})\n"
+        "- ManaCost: Using curly braces (e.g., {2}{W}{U})\n"
         "- Type: Full type line (e.g., 'Legendary Creature - Elf Warrior')\n"
         "- Color: White, Blue, Black, Red, Green, or Colorless\n"
         "- Abilities: List of abilities or rules text\n"
@@ -121,6 +132,7 @@ def generate_card_prompt(rarity: str = None) -> str:
 
 def generate_fallback_card(rarity: str) -> Dict[str, Any]:
     """Generate a basic fallback card when GPT response is invalid."""
+    rarity_enum = Rarity.COMMON if not rarity else Rarity[rarity.upper().replace(' ', '_')]
     return {
         'name': 'Default Card',
         'manaCost': '{0}',
@@ -128,7 +140,7 @@ def generate_fallback_card(rarity: str) -> Dict[str, Any]:
         'color': 'Colorless',
         'abilities': 'None',
         'flavorText': 'Default fallback card.',
-        'rarity': Rarity.COMMON if not rarity else Rarity[rarity.upper().replace(' ', '_')],
+        'rarity': rarity_enum.value,  # Convert enum to string value
         'set_name': DEFAULT_SET_NAME,
         'card_number': 1
     }
@@ -186,44 +198,16 @@ def generate_image_prompt(card_data: Dict[str, Any]) -> str:
     else:
         prompt += "Depict the card's effect in a visually appealing way. "
 
-    prompt += f"Use the {card_data['color']} color scheme with {card_data['rarity'].value.lower()} quality. "
+    # Handle rarity being either string or enum
+    rarity = card_data['rarity']
+    if isinstance(rarity, Rarity):
+        rarity = rarity.value
+
+    prompt += f"Use the {card_data['color']} color scheme with {rarity.lower()} quality. "
     prompt += "High detail, dramatic lighting, no text or borders."
 
     return prompt
 
-def open_pack() -> List[Dict[str, Any]]:
-    """Simulate opening a Magic: The Gathering pack of cards."""
-    pack = []
-
-    rarity_probabilities = get_rarity_probabilities()
-
-    # Generate one Rare or Mythic Rare card
-    rare_or_mythic = random.choices(
-        [Rarity.RARE, Rarity.MYTHIC_RARE],
-        weights=[rarity_probabilities[Rarity.RARE], rarity_probabilities[Rarity.MYTHIC_RARE]]
-    )[0]
-    pack.append(generate_card_with_rarity(rare_or_mythic))
-
-    # Generate three Uncommon cards
-    for _ in range(3):
-        pack.append(generate_card_with_rarity(Rarity.UNCOMMON))
-
-    # Generate six Common cards
-    for _ in range(6):
-        pack.append(generate_card_with_rarity(Rarity.COMMON))
-
-    return pack
-
 def get_rarity_probabilities() -> Dict[Rarity, float]:
     """Get the rarity probabilities."""
     return DEFAULT_RARITY_PROBABILITIES
-
-def generate_card_with_rarity(rarity: Rarity) -> Dict[str, Any]:
-    """Generate a card with specified rarity and its corresponding image."""
-    try:
-        card_data = generate_card(rarity.value)
-        card_data['image_url'], card_data['local_image_path'] = generate_card_image(card_data)
-        return card_data
-    except Exception as e:
-        logger.error(f"Failed to generate card with rarity {rarity}: {e}")
-        raise ValueError(f"Failed to generate card with rarity {rarity}: {e}")

@@ -5,17 +5,19 @@ load_dotenv()
 import logging
 import os
 from datetime import datetime
-from typing import Optional
-from fastapi import FastAPI, Request, Depends, HTTPException, Form
+from typing import Optional, List
+from fastapi import FastAPI, Request, Depends, HTTPException, Form, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import auth
+import uuid
 
 import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
-from card_generator import generate_card, generate_card_image, open_pack
+from card_generator import generate_card_image
+from card_queue import card_queue, start_queue_processor, clean_old_results
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +42,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks on app startup."""
+    background_tasks = BackgroundTasks()
+    start_queue_processor(background_tasks)
+    background_tasks.add_task(clean_old_results)
 
 async def get_current_user(request: Request) -> Optional[str]:
     """Get the current user from the Firebase ID token and sync with Firestore."""
@@ -205,21 +214,43 @@ async def create_card_handler(
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     try:
-        # Generate card data
-        card_data = generate_card(rarity)
-        card_data['user_id'] = user_id
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
         
-        # Generate and upload image
-        image_url, b2_url = generate_card_image(card_data)
-        filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+        # Add to queue
+        await card_queue.add_to_queue(task_id, user_id, rarity)
         
-        # Create card with image
-        card = firestore_db.create_card(card_data, b2_url, filename)
-        
-        return RedirectResponse(url=f"/cards/{card['id']}", status_code=303)
+        # Return task ID for status checking
+        return JSONResponse({
+            "status": "queued",
+            "task_id": task_id,
+            "message": "Card generation started"
+        })
     except Exception as e:
         logger.error(f"Error creating card: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/create/status/{task_id}")
+async def check_card_status(
+    task_id: str,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Check the status of a card creation task."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    status = await card_queue.get_task_status(task_id)
+    
+    if status['status'] == 'completed':
+        # Redirect to the new card
+        return JSONResponse({
+            "status": "completed",
+            "redirect_url": f"/cards/{status['card_id']}"
+        })
+    elif status['status'] == 'error':
+        raise HTTPException(status_code=500, detail=status['error'])
+    else:
+        return JSONResponse(status)
 
 @app.get("/packs", response_class=HTMLResponse)
 async def open_pack_form(
@@ -245,26 +276,83 @@ async def open_pack_action(
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     try:
-        pack_cards = open_pack()
-        created_cards = []
+        # Generate unique task IDs for each card in the pack
+        pack_tasks = []
         
-        for card_data in pack_cards:
-            # Add user_id to card data
-            card_data['user_id'] = user_id
-            
-            # Generate and upload image
-            image_url, b2_url = generate_card_image(card_data)
-            filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
-            
-            # Create card with image
-            card = firestore_db.create_card(card_data, b2_url, filename)
-            created_cards.append(card)
+        # Queue one Rare/Mythic Rare card
+        task_id = str(uuid.uuid4())
+        await card_queue.add_to_queue(task_id, user_id, "Rare")  # Will randomly become Mythic based on probability
+        pack_tasks.append(task_id)
         
-        context = get_template_context(request)
-        context["cards"] = created_cards
-        return templates.TemplateResponse("cards/pack_result.html", context)
+        # Queue three Uncommon cards
+        for _ in range(3):
+            task_id = str(uuid.uuid4())
+            await card_queue.add_to_queue(task_id, user_id, "Uncommon")
+            pack_tasks.append(task_id)
+            
+        # Queue six Common cards
+        for _ in range(6):
+            task_id = str(uuid.uuid4())
+            await card_queue.add_to_queue(task_id, user_id, "Common")
+            pack_tasks.append(task_id)
+        
+        # Return task IDs for status checking
+        return JSONResponse({
+            "status": "queued",
+            "pack_tasks": pack_tasks,
+            "message": "Pack opening started"
+        })
     except Exception as e:
         logger.error(f"Error opening pack: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/packs/status")
+async def check_pack_status(
+    request: Request,
+    task_ids: List[str],
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Check the status of all cards in a pack."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        statuses = []
+        completed_cards = []
+        all_completed = True
+        
+        for task_id in task_ids:
+            status = await card_queue.get_task_status(task_id)
+            statuses.append(status)
+            
+            if status['status'] == 'completed':
+                # Get the card details
+                card = firestore_db.get_card(status['card_id'])
+                if card:
+                    completed_cards.append(card)
+            else:
+                all_completed = False
+        
+        if all_completed:
+            # All cards are ready, return them sorted by rarity
+            sorted_cards = sorted(
+                completed_cards,
+                key=lambda x: ['Mythic Rare', 'Rare', 'Uncommon', 'Common'].index(x['rarity'])
+            )
+            return JSONResponse({
+                "status": "completed",
+                "cards": sorted_cards
+            })
+        else:
+            # Some cards are still processing
+            return JSONResponse({
+                "status": "processing",
+                "completed": len(completed_cards),
+                "total": len(task_ids)
+            })
+            
+    except Exception as e:
+        logger.error(f"Error checking pack status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

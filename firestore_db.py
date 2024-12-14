@@ -1,9 +1,9 @@
 from firebase_admin import firestore, credentials, initialize_app
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-import enum
 import os
 from dotenv import load_dotenv
+from models import Rarity  # Import Rarity from models instead of defining it here
 
 # Load environment variables
 load_dotenv()
@@ -23,12 +23,6 @@ except ValueError:
 # Initialize Firestore client
 db = firestore.client()
 
-class Rarity(enum.Enum):
-    COMMON = "Common"
-    UNCOMMON = "Uncommon"
-    RARE = "Rare"
-    MYTHIC_RARE = "Mythic Rare"
-
 def user_to_dict(user_data: Dict[str, Any]) -> Dict[str, Any]:
     """Convert user data to Firestore format."""
     return {
@@ -45,7 +39,12 @@ def card_to_dict(card_data: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(rarity, Rarity):
         rarity = rarity.value
     elif isinstance(rarity, str):
-        rarity = Rarity[rarity.upper().replace(' ', '_')].value
+        try:
+            # Try to convert string to enum value
+            rarity = Rarity[rarity.upper().replace(' ', '_')].value
+        except KeyError:
+            # If invalid rarity string, default to Common
+            rarity = Rarity.COMMON.value
 
     return {
         'name': card_data.get('name'),

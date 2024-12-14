@@ -9,3 +9,6 @@ tenacity
 requests
 firebase-admin
 b2
+asyncio
+aiohttp
+uuid
