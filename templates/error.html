@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Error - AI Card Creator{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto mt-8">
+    <div class="bg-white p-6 rounded-lg shadow-lg">
+        <div class="text-center">
+            <h1 class="text-2xl font-bold text-red-600 mb-4">Error</h1>
+            <p class="text-gray-700 mb-6">{{ error }}</p>
+            
+            <div class="space-y-4">
+                <button onclick="window.history.back()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
+                    Go Back
+                </button>
+                
+                <div class="text-sm text-gray-600">
+                    <p>If the problem persists, please try:</p>
+                    <ul class="list-disc list-inside mt-2 space-y-1">
+                        <li>Refreshing the page</li>
+                        <li>Signing out and back in</li>
+                        <li>Trying again in a few minutes</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

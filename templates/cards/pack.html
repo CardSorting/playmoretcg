@@ -54,29 +54,59 @@
 </style>
 
 <script>
-    let pollInterval;
+    let pollTimeout;
+    const POLL_INTERVAL = 2000; // 2 seconds
+    const MAX_POLL_TIME = 180000; // 3 minutes
     let packTasks = [];
     
-    async function checkPackStatus() {
-        if (!packTasks.length) return;
-        
+    async function pollPackStatus(startTime) {
         try {
-            const response = await fetch(`/packs/status?${packTasks.map(id => `task_ids=${id}`).join('&')}`);
-            const data = await response.json();
+            if (!packTasks.length) return;
             
-            if (data.status === 'completed') {
-                clearInterval(pollInterval);
-                // Redirect to pack result page with the cards
-                window.location.href = `/packs/result?${data.cards.map(card => `card_id=${card.id}`).join('&')}`;
-            } else {
-                updateProgress(data.completed, data.total);
+            // Check if we've exceeded max poll time
+            if (Date.now() - startTime > MAX_POLL_TIME) {
+                document.getElementById('error-message').textContent = "Operation timed out. Please try again.";
+                document.getElementById('error-container').classList.remove('hidden');
+                document.getElementById('loading-container').classList.add('hidden');
+                return;
+            }
+            
+            const response = await fetch(`/packs/status?${packTasks.map(id => `task_ids=${id}`).join('&')}`);
+            if (!response.ok) throw new Error('Failed to check status');
+            
+            const data = await response.json();
+            console.log('Status response:', data); // Debug log
+            
+            switch (data.status) {
+                case 'completed':
+                    if (data.cards && data.cards.length > 0) {
+                        window.location.href = `/packs/result?${data.cards.map(card => `card_id=${card.id}`).join('&')}`;
+                    } else {
+                        throw new Error('No cards in response');
+                    }
+                    return;
+                    
+                case 'error':
+                    const errorMessage = data.errors ? data.errors.join(', ') : "Failed to generate pack";
+                    document.getElementById('error-message').textContent = errorMessage;
+                    document.getElementById('error-container').classList.remove('hidden');
+                    document.getElementById('loading-container').classList.add('hidden');
+                    return;
+                    
+                case 'processing':
+                    updateProgress(data.completed, data.total);
+                    // Schedule next poll
+                    pollTimeout = setTimeout(() => pollPackStatus(startTime), POLL_INTERVAL);
+                    break;
+                    
+                default:
+                    throw new Error(`Unknown status: ${data.status}`);
             }
         } catch (error) {
-            console.error('Error checking pack status:', error);
+            console.error('Polling error:', error);
             document.getElementById('error-message').textContent = error.message;
             document.getElementById('error-container').classList.remove('hidden');
             document.getElementById('loading-container').classList.add('hidden');
-            clearInterval(pollInterval);
         }
     }
     
@@ -89,6 +119,11 @@
     
     async function handleOpenPack(event) {
         event.preventDefault();
+        
+        // Clear any existing timeout
+        if (pollTimeout) {
+            clearTimeout(pollTimeout);
+        }
         
         // Show loading state
         document.getElementById('form-container').classList.add('hidden');
@@ -105,19 +140,29 @@
             }
             
             const data = await response.json();
+            console.log('Pack creation response:', data); // Debug log
             
-            if (data.status === 'queued') {
+            if (data.status === 'queued' && data.pack_tasks) {
                 packTasks = data.pack_tasks;
-                // Start polling for status
-                pollInterval = setInterval(checkPackStatus, 1000);
+                // Start polling with timestamp
+                pollPackStatus(Date.now());
+            } else {
+                throw new Error('Invalid response from server');
             }
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Submission error:', error);
             document.getElementById('error-message').textContent = error.message;
             document.getElementById('error-container').classList.remove('hidden');
             document.getElementById('loading-container').classList.add('hidden');
         }
     }
+    
+    // Cleanup on page unload
+    window.addEventListener('unload', () => {
+        if (pollTimeout) {
+            clearTimeout(pollTimeout);
+        }
+    });
 </script>
 {% endblock %}
 

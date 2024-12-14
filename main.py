@@ -5,19 +5,24 @@ load_dotenv()
 import logging
 import os
 from datetime import datetime
-from typing import Optional, List
-from fastapi import FastAPI, Request, Depends, HTTPException, Form, BackgroundTasks
+from typing import Optional, List, Dict, Any
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, Depends, HTTPException, Form, BackgroundTasks, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from firebase_admin import auth
 import uuid
+import json
 
 import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
-from card_generator import generate_card_image
-from card_queue import card_queue, start_queue_processor, clean_old_results
+from card_queue import (
+    card_queue, start_queue_processor, clean_old_results,
+    CardGenerationError, QueueFullError, TaskNotFoundError
+)
 
 # Configure logging
 logging.basicConfig(
@@ -26,7 +31,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events."""
+    # Startup
+    try:
+        background_tasks = BackgroundTasks()
+        start_queue_processor(background_tasks)
+        background_tasks.add_task(clean_old_results)
+        logger.info("Background tasks started successfully")
+    except Exception as e:
+        logger.error(f"Error starting background tasks: {e}")
+        # Continue running - tasks will retry
+    
+    yield  # Server is running
+    
+    # Shutdown
+    try:
+        await card_queue.shutdown()
+        logger.info("Queue shutdown completed")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+
+app = FastAPI(lifespan=lifespan)
 
 # Configure CORS
 app.add_middleware(
@@ -37,18 +64,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add Gzip compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Mount static files directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
 
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks on app startup."""
-    background_tasks = BackgroundTasks()
-    start_queue_processor(background_tasks)
-    background_tasks.add_task(clean_old_results)
+def handle_json_error(error: Exception) -> Dict[str, Any]:
+    """Convert exception to JSON-serializable error response."""
+    try:
+        if isinstance(error, CardGenerationError):
+            return {"error": str(error), "type": error.__class__.__name__}
+        return {"error": "Internal server error", "type": "ServerError"}
+    except Exception as e:
+        logger.error(f"Error handling error response: {e}")
+        return {"error": "Unknown error", "type": "UnknownError"}
 
 async def get_current_user(request: Request) -> Optional[str]:
     """Get the current user from the Firebase ID token and sync with Firestore."""
@@ -86,12 +119,46 @@ async def get_current_user(request: Request) -> Optional[str]:
         logger.error(f"Token verification error: {str(e)}")
         return None
 
-def get_template_context(request: Request) -> dict:
+def get_template_context(request: Request) -> Dict[str, Any]:
     """Get common template context data."""
     return {
         "request": request,
         "firebase_config": FIREBASE_CONFIG
     }
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions gracefully."""
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": exc.detail}
+        )
+    # For HTML requests, show an error page
+    context = get_template_context(request)
+    context["error"] = exc.detail
+    return templates.TemplateResponse(
+        "error.html",
+        context,
+        status_code=exc.status_code
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions gracefully."""
+    logger.error(f"Unexpected error: {exc}", exc_info=True)
+    if request.headers.get("accept") == "application/json":
+        return JSONResponse(
+            status_code=500,
+            content=handle_json_error(exc)
+        )
+    context = get_template_context(request)
+    context["error"] = "An unexpected error occurred"
+    return templates.TemplateResponse(
+        "error.html",
+        context,
+        status_code=500
+    )
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -101,11 +168,17 @@ async def home(request: Request):
 @app.get("/explore", response_class=HTMLResponse)
 async def explore(request: Request):
     """Public explore page."""
-    context = get_template_context(request)
-    # Get some random cards to display
-    cards = firestore_db.get_random_cards()
-    context["cards"] = cards
-    return templates.TemplateResponse("explore.html", context)
+    try:
+        context = get_template_context(request)
+        cards = firestore_db.get_random_cards()
+        context["cards"] = cards
+        return templates.TemplateResponse("explore.html", context)
+    except Exception as e:
+        logger.error(f"Error in explore route: {e}")
+        context = get_template_context(request)
+        context["cards"] = []  # Fallback to empty list
+        context["error"] = "Unable to load cards"
+        return templates.TemplateResponse("explore.html", context)
 
 @app.get("/about", response_class=HTMLResponse)
 async def about(request: Request):
@@ -226,9 +299,17 @@ async def create_card_handler(
             "task_id": task_id,
             "message": "Card generation started"
         })
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail="Server is busy, please try again later"
+        )
     except Exception as e:
-        logger.error(f"Error creating card: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error creating card: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to start card generation"
+        )
 
 @app.get("/create/status/{task_id}")
 async def check_card_status(
@@ -239,18 +320,17 @@ async def check_card_status(
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    status = await card_queue.get_task_status(task_id)
-    
-    if status['status'] == 'completed':
-        # Redirect to the new card
-        return JSONResponse({
-            "status": "completed",
-            "redirect_url": f"/cards/{status['card_id']}"
-        })
-    elif status['status'] == 'error':
-        raise HTTPException(status_code=500, detail=status['error'])
-    else:
+    try:
+        status = await card_queue.get_task_status(task_id)
         return JSONResponse(status)
+    except TaskNotFoundError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    except Exception as e:
+        logger.error(f"Error checking status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to check task status"
+        )
 
 @app.get("/packs", response_class=HTMLResponse)
 async def open_pack_form(
@@ -281,7 +361,7 @@ async def open_pack_action(
         
         # Queue one Rare/Mythic Rare card
         task_id = str(uuid.uuid4())
-        await card_queue.add_to_queue(task_id, user_id, "Rare")  # Will randomly become Mythic based on probability
+        await card_queue.add_to_queue(task_id, user_id, "Rare")
         pack_tasks.append(task_id)
         
         # Queue three Uncommon cards
@@ -302,14 +382,22 @@ async def open_pack_action(
             "pack_tasks": pack_tasks,
             "message": "Pack opening started"
         })
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail="Server is busy, please try again later"
+        )
     except Exception as e:
-        logger.error(f"Error opening pack: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error opening pack: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to start pack opening"
+        )
 
 @app.get("/packs/status")
 async def check_pack_status(
     request: Request,
-    task_ids: List[str],
+    task_ids: List[str] = Query(...),
     user_id: Optional[str] = Depends(get_current_user)
 ):
     """Check the status of all cards in a pack."""
@@ -320,17 +408,26 @@ async def check_pack_status(
         statuses = []
         completed_cards = []
         all_completed = True
+        errors = []
         
         for task_id in task_ids:
-            status = await card_queue.get_task_status(task_id)
-            statuses.append(status)
-            
-            if status['status'] == 'completed':
-                # Get the card details
-                card = firestore_db.get_card(status['card_id'])
-                if card:
-                    completed_cards.append(card)
-            else:
+            try:
+                status = await card_queue.get_task_status(task_id)
+                statuses.append(status)
+                
+                if status['status'] == 'completed':
+                    # Get the card details
+                    card = firestore_db.get_card(status['card_id'])
+                    if card:
+                        completed_cards.append(card)
+                elif status['status'] == 'error':
+                    errors.append(status['error'])
+                    all_completed = False
+                else:
+                    all_completed = False
+            except Exception as e:
+                logger.error(f"Error checking task {task_id}: {e}")
+                errors.append(f"Failed to check task {task_id}")
                 all_completed = False
         
         if all_completed:
@@ -343,6 +440,13 @@ async def check_pack_status(
                 "status": "completed",
                 "cards": sorted_cards
             })
+        elif errors:
+            return JSONResponse({
+                "status": "error",
+                "errors": errors,
+                "completed": len(completed_cards),
+                "total": len(task_ids)
+            })
         else:
             # Some cards are still processing
             return JSONResponse({
@@ -352,10 +456,19 @@ async def check_pack_status(
             })
             
     except Exception as e:
-        logger.error(f"Error checking pack status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error checking pack status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to check pack status"
+        )
 
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting server...")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="debug")
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="debug",
+        workers=1  # Single worker for in-memory queue
+    )

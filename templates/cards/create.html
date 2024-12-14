@@ -72,26 +72,62 @@
 </style>
 
 <script>
-    let pollInterval;
+    let pollTimeout;
+    const POLL_INTERVAL = 2000; // 2 seconds
+    const MAX_POLL_TIME = 180000; // 3 minutes
     
-    async function checkStatus(taskId) {
+    async function pollStatus(taskId, startTime) {
         try {
-            const response = await fetch(`/create/status/${taskId}`);
-            const data = await response.json();
-            
-            if (data.status === 'completed') {
-                clearInterval(pollInterval);
-                window.location.href = data.redirect_url;
-            } else if (data.status === 'error') {
-                clearInterval(pollInterval);
-                document.getElementById('error-message').textContent = data.error;
+            // Check if we've exceeded max poll time
+            if (Date.now() - startTime > MAX_POLL_TIME) {
+                document.getElementById('error-message').textContent = "Operation timed out. Please try again.";
                 document.getElementById('error-container').classList.remove('hidden');
                 document.getElementById('loading-container').classList.add('hidden');
-            } else {
-                updateProgress(data.status);
+                return;
+            }
+            
+            const response = await fetch(`/create/status/${taskId}`);
+            if (!response.ok) throw new Error('Failed to check status');
+            
+            const data = await response.json();
+            console.log('Status response:', data); // Debug log
+            
+            switch (data.status) {
+                case 'completed':
+                    if (data.redirect_url) {
+                        window.location.href = data.redirect_url;
+                    } else {
+                        throw new Error('Missing redirect URL');
+                    }
+                    return;
+                    
+                case 'error':
+                    document.getElementById('error-message').textContent = data.error || "An error occurred";
+                    document.getElementById('error-container').classList.remove('hidden');
+                    document.getElementById('loading-container').classList.add('hidden');
+                    return;
+                    
+                case 'queued':
+                case 'processing':
+                    updateProgress(data.status);
+                    // Schedule next poll
+                    pollTimeout = setTimeout(() => pollStatus(taskId, startTime), POLL_INTERVAL);
+                    break;
+                    
+                case 'not_found':
+                    document.getElementById('error-message').textContent = "Task not found";
+                    document.getElementById('error-container').classList.remove('hidden');
+                    document.getElementById('loading-container').classList.add('hidden');
+                    return;
+                    
+                default:
+                    throw new Error(`Unknown status: ${data.status}`);
             }
         } catch (error) {
-            console.error('Error checking status:', error);
+            console.error('Polling error:', error);
+            document.getElementById('error-message').textContent = error.message;
+            document.getElementById('error-container').classList.remove('hidden');
+            document.getElementById('loading-container').classList.add('hidden');
         }
     }
     
@@ -116,14 +152,18 @@
     async function handleSubmit(event) {
         event.preventDefault();
         
+        // Clear any existing timeout
+        if (pollTimeout) {
+            clearTimeout(pollTimeout);
+        }
+        
         // Show loading state
         document.getElementById('form-container').classList.add('hidden');
         document.getElementById('loading-container').classList.remove('hidden');
         document.getElementById('error-container').classList.add('hidden');
         
-        const formData = new FormData(event.target);
-        
         try {
+            const formData = new FormData(event.target);
             const response = await fetch('/create', {
                 method: 'POST',
                 body: formData
@@ -134,18 +174,28 @@
             }
             
             const data = await response.json();
+            console.log('Create response:', data); // Debug log
             
-            if (data.status === 'queued') {
-                // Start polling for status
-                pollInterval = setInterval(() => checkStatus(data.task_id), 1000);
+            if (data.status === 'queued' && data.task_id) {
+                // Start polling with timestamp
+                pollStatus(data.task_id, Date.now());
+            } else {
+                throw new Error('Invalid response from server');
             }
         } catch (error) {
-            console.error('Error:', error);
+            console.error('Submission error:', error);
             document.getElementById('error-message').textContent = error.message;
             document.getElementById('error-container').classList.remove('hidden');
             document.getElementById('loading-container').classList.add('hidden');
         }
     }
+    
+    // Cleanup on page unload
+    window.addEventListener('unload', () => {
+        if (pollTimeout) {
+            clearTimeout(pollTimeout);
+        }
+    });
 </script>
 {% endblock %}
 
