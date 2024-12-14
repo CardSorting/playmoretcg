@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In - AI Card Creator{% endblock %}
+
+{% block head %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const uiConfig = {
+            signInOptions: [{
+                provider: firebase.auth.EmailAuthProvider.PROVIDER_ID,
+                requireDisplayName: false
+            }],
+            signInFlow: 'redirect',
+            callbacks: {
+                signInSuccessWithAuthResult: function(authResult) {
+                    window.location.href = '/';
+                    return false;
+                }
+            },
+            autoUpgradeAnonymousUsers: false,
+            signInSuccessUrl: '/'
+        };
+
+        ui.start('#firebaseui-auth-container', uiConfig);
+    });
+</script>
+
+<style>
+    .firebaseui-container {
+        max-width: 100% !important;
+    }
+    .firebaseui-card-content {
+        padding: 20px !important;
+    }
+    .firebaseui-title {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-8">
+    <div class="bg-white p-6 rounded shadow">
+        <h1 class="text-2xl mb-4 text-center">Sign In</h1>
+        <div id="firebaseui-auth-container"></div>
+    </div>
+</div>
+{% endblock %}

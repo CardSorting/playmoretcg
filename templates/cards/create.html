@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Card - AI Card Creator{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6">Create New Card</h1>
+    
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <form action="/create" method="POST" class="space-y-6">
+            <div>
+                <label for="rarity" class="block text-sm font-medium text-gray-700 mb-2">Card Rarity</label>
+                <select name="rarity" id="rarity" class="w-full p-2 border rounded-md">
+                    <option value="">Random</option>
+                    <option value="Common">Common</option>
+                    <option value="Uncommon">Uncommon</option>
+                    <option value="Rare">Rare</option>
+                    <option value="Mythic Rare">Mythic Rare</option>
+                </select>
+            </div>
+            
+            <div class="bg-blue-50 p-4 rounded-md">
+                <h3 class="text-blue-800 font-medium mb-2">What happens next?</h3>
+                <ul class="text-blue-700 text-sm space-y-2">
+                    <li>• AI will generate unique card attributes</li>
+                    <li>• Custom artwork will be created for your card</li>
+                    <li>• Your card will be added to your collection</li>
+                </ul>
+            </div>
+            
+            <button type="submit" class="w-full py-3 px-4 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">
+                Generate Card
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

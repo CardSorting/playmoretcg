@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Pack Results - AI Card Creator{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6">Your Pack Results</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {% for card in cards %}
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+            <a href="/cards/{{ card.id }}" class="block">
+                {% if card.local_image_path %}
+                <div class="aspect-square">
+                    <img src="{{ card.local_image_path }}" alt="{{ card.name }}" class="w-full h-full object-cover">
+                </div>
+                {% else %}
+                <div class="aspect-square bg-gray-200 flex items-center justify-center">
+                    <span class="text-gray-500">No image available</span>
+                </div>
+                {% endif %}
+                
+                <div class="p-4">
+                    <div class="flex justify-between items-start">
+                        <h2 class="text-lg font-semibold">{{ card.name }}</h2>
+                        <span class="text-gray-600">{{ card.manaCost }}</span>
+                    </div>
+                    
+                    <p class="text-gray-600 text-sm mt-1">{{ card.type }}</p>
+                    
+                    <div class="flex justify-between items-center mt-2 text-sm">
+                        <span class="text-gray-500">{{ card.set_name }} #{{ card.card_number }}</span>
+                        <span class="px-2 py-1 rounded text-xs font-semibold
+                            {% if card.rarity == 'Common' %}bg-gray-200 text-gray-700
+                            {% elif card.rarity == 'Uncommon' %}bg-green-200 text-green-700
+                            {% elif card.rarity == 'Rare' %}bg-blue-200 text-blue-700
+                            {% else %}bg-orange-200 text-orange-700{% endif %}">
+                            {{ card.rarity }}
+                        </span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

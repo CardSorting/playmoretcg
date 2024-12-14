@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Card Collection - AI Card Creator{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">Your Card Collection</h1>
+        <div class="space-x-4">
+            <a href="/create" class="py-2 px-4 bg-blue-500 text-white rounded hover:bg-blue-600">Create New Card</a>
+            <a href="/packs" class="py-2 px-4 bg-green-500 text-white rounded hover:bg-green-600">Open Pack</a>
+        </div>
+    </div>
+
+    {% if cards %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {% for card in cards %}
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+            <a href="/cards/{{ card.id }}" class="block">
+                {% if card.local_image_path %}
+                <div class="aspect-square">
+                    <img src="{{ card.local_image_path }}" alt="{{ card.name }}" class="w-full h-full object-cover">
+                </div>
+                {% else %}
+                <div class="aspect-square bg-gray-200 flex items-center justify-center">
+                    <span class="text-gray-500">No image available</span>
+                </div>
+                {% endif %}
+                
+                <div class="p-4">
+                    <div class="flex justify-between items-start">
+                        <h2 class="text-lg font-semibold">{{ card.name }}</h2>
+                        <span class="text-gray-600">{{ card.manaCost }}</span>
+                    </div>
+                    
+                    <p class="text-gray-600 text-sm mt-1">{{ card.type }}</p>
+                    
+                    <div class="flex justify-between items-center mt-2 text-sm">
+                        <span class="text-gray-500">{{ card.set_name }} #{{ card.card_number }}</span>
+                        <span class="px-2 py-1 rounded text-xs font-semibold
+                            {% if card.rarity == 'Common' %}bg-gray-200 text-gray-700
+                            {% elif card.rarity == 'Uncommon' %}bg-green-200 text-green-700
+                            {% elif card.rarity == 'Rare' %}bg-blue-200 text-blue-700
+                            {% else %}bg-orange-200 text-orange-700{% endif %}">
+                            {{ card.rarity }}
+                        </span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <h2 class="text-2xl font-semibold text-gray-600">No cards in your collection yet</h2>
+        <p class="text-gray-500 mt-2">Create your first card or open a pack to get started!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

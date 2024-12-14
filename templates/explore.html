@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Explore Cards - AI Card Creator{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Hero Section -->
+    <div class="text-center mb-12">
+        <h1 class="text-3xl font-bold mb-4">Explore AI-Generated Cards</h1>
+        <p class="text-gray-600 max-w-2xl mx-auto">
+            Discover unique trading cards created by our community using artificial intelligence.
+        </p>
+    </div>
+
+    <!-- Featured Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <!-- Example Card 1 -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="aspect-square bg-gray-200"></div>
+            <div class="p-4">
+                <h3 class="font-semibold mb-2">Mystic Dragon</h3>
+                <p class="text-sm text-gray-600">Legendary Creature</p>
+                <div class="mt-4 flex justify-between items-center">
+                    <span class="text-sm font-medium text-blue-600">Rare</span>
+                    <span class="text-sm text-gray-500">Created by AI</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Example Card 2 -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="aspect-square bg-gray-200"></div>
+            <div class="p-4">
+                <h3 class="font-semibold mb-2">Ancient Artifact</h3>
+                <p class="text-sm text-gray-600">Mythic Artifact</p>
+                <div class="mt-4 flex justify-between items-center">
+                    <span class="text-sm font-medium text-purple-600">Mythic Rare</span>
+                    <span class="text-sm text-gray-500">Created by AI</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Example Card 3 -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="aspect-square bg-gray-200"></div>
+            <div class="p-4">
+                <h3 class="font-semibold mb-2">Enchanted Forest</h3>
+                <p class="text-sm text-gray-600">Land Card</p>
+                <div class="mt-4 flex justify-between items-center">
+                    <span class="text-sm font-medium text-green-600">Uncommon</span>
+                    <span class="text-sm text-gray-500">Created by AI</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call to Action -->
+    <div class="text-center py-12 bg-gray-50 rounded-lg">
+        <h2 class="text-2xl font-bold mb-4">Create Your Own Cards</h2>
+        <p class="text-gray-600 mb-6">Join our community and start creating unique cards with AI</p>
+        <a href="/sign-in" class="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 inline-block">
+            Get Started
+        </a>
+    </div>
+</div>
+{% endblock %}

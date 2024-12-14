@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}About - AI Card Creator{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Main Content -->
+    <div class="bg-white rounded-lg shadow-sm p-8 mb-8">
+        <h1 class="text-3xl font-bold mb-6">About AI Card Creator</h1>
+        
+        <div class="prose max-w-none">
+            <p class="text-gray-600 mb-6">
+                AI Card Creator is a platform that combines artificial intelligence with card game design, 
+                allowing users to create unique trading cards with AI-generated artwork and abilities.
+            </p>
+
+            <h2 class="text-2xl font-semibold mb-4 mt-8">How It Works</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <h3 class="font-semibold mb-2">1. Create Cards</h3>
+                    <p class="text-sm text-gray-600">
+                        Use our AI-powered system to generate unique cards with custom artwork and abilities.
+                    </p>
+                </div>
+                
+                <div class="p-4 bg-green-50 rounded-lg">
+                    <h3 class="font-semibold mb-2">2. Open Packs</h3>
+                    <p class="text-sm text-gray-600">
+                        Discover new cards by opening card packs filled with random AI-generated content.
+                    </p>
+                </div>
+                
+                <div class="p-4 bg-purple-50 rounded-lg">
+                    <h3 class="font-semibold mb-2">3. Build Collection</h3>
+                    <p class="text-sm text-gray-600">
+                        Grow your personal collection of unique AI-generated cards over time.
+                    </p>
+                </div>
+            </div>
+
+            <h2 class="text-2xl font-semibold mb-4">Technology</h2>
+            <p class="text-gray-600 mb-6">
+                Our platform uses advanced AI models to generate both card artwork and game mechanics. 
+                Each card is unique and created using:
+            </p>
+            <ul class="list-disc pl-6 mb-8 text-gray-600">
+                <li>OpenAI's GPT-4 for card text generation</li>
+                <li>DALL-E 3 for artwork creation</li>
+                <li>Custom algorithms for game balance</li>
+                <li>Real-time card rendering</li>
+            </ul>
+
+            <h2 class="text-2xl font-semibold mb-4">Our Mission</h2>
+            <p class="text-gray-600 mb-6">
+                We aim to democratize card game creation by providing tools that allow anyone to create 
+                professional-quality trading cards. Our platform combines the creativity of human design 
+                with the capabilities of artificial intelligence.
+            </p>
+        </div>
+    </div>
+
+    <!-- Call to Action -->
+    <div class="text-center py-8">
+        <h2 class="text-2xl font-bold mb-4">Ready to Create?</h2>
+        <p class="text-gray-600 mb-6">Join our community and start creating your own unique cards today.</p>
+        <div class="space-x-4">
+            <a href="/sign-in" class="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 inline-block">
+                Get Started
+            </a>
+            <a href="/explore" class="text-blue-500 hover:text-blue-600 px-6 py-3 inline-block">
+                Explore Cards
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

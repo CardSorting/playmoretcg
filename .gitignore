@@ -1,0 +1,19 @@
+# Environment variables
+.env
+
+# Credentials
+cred/
+
+# Database
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# macOS
+.DS_Store
+
+# Generated content
+static/card_images/

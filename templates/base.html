@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Card Creator{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <!-- Firebase UI -->
+    <script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.js"></script>
+    <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css" />
+    
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "{{ firebase_config.apiKey }}",
+            authDomain: "{{ firebase_config.authDomain }}",
+            projectId: "{{ firebase_config.projectId }}",
+            storageBucket: "{{ firebase_config.storageBucket }}",
+            messagingSenderId: "{{ firebase_config.messagingSenderId }}",
+            appId: "{{ firebase_config.appId }}"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const ui = new firebaseui.auth.AuthUI(firebase.auth());
+
+        // Auth state observer
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                // User is signed in
+                user.getIdToken().then((token) => {
+                    document.cookie = `auth_token=${token}; path=/; SameSite=Strict`;
+                });
+                
+                // Update UI
+                const userInfo = document.getElementById('user-info');
+                const authButtons = document.getElementById('auth-buttons');
+                if (userInfo && authButtons) {
+                    userInfo.innerHTML = `
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white font-medium">${user.email[0].toUpperCase()}</span>
+                                </div>
+                                <span class="text-sm font-medium">${user.email}</span>
+                            </div>
+                            <button onclick="signOut()" class="text-sm text-red-600 hover:text-red-700">Sign Out</button>
+                        </div>
+                    `;
+                    userInfo.style.display = 'block';
+                    authButtons.style.display = 'none';
+                }
+                
+                // Show/hide elements
+                document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'flex');
+                document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'none');
+            } else {
+                // User is signed out
+                document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+                
+                // Update UI
+                const userInfo = document.getElementById('user-info');
+                const authButtons = document.getElementById('auth-buttons');
+                if (userInfo && authButtons) {
+                    userInfo.style.display = 'none';
+                    authButtons.style.display = 'flex';
+                }
+                
+                // Show/hide elements
+                document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'none');
+                document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'flex');
+            }
+        });
+
+        function signOut() {
+            firebase.auth().signOut().then(() => {
+                window.location.href = '/';
+            }).catch((error) => {
+                console.error('Sign Out Error:', error);
+            });
+        }
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200">
+        <div class="max-w-6xl mx-auto">
+            <!-- Top Navigation -->
+            <nav class="flex items-center justify-between h-16 px-4">
+                <!-- Left side -->
+                <div class="flex items-center space-x-8">
+                    <a href="/" class="flex items-center space-x-2">
+                        <span class="text-xl font-bold text-gray-900">AI Card Creator</span>
+                    </a>
+                    <div class="hidden md:flex space-x-6">
+                        <a href="/" class="text-gray-600 hover:text-gray-900">Home</a>
+                        <a href="/explore" class="text-gray-600 hover:text-gray-900">Explore</a>
+                        <a href="/about" class="text-gray-600 hover:text-gray-900">About</a>
+                    </div>
+                </div>
+
+                <!-- Right side -->
+                <div class="flex items-center space-x-6">
+                    <div class="auth-required" style="display: none;">
+                        <div class="flex items-center space-x-4">
+                            <a href="/create" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                                Create Card
+                            </a>
+                            <a href="/packs" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">
+                                Open Pack
+                            </a>
+                            <a href="/collection" class="text-gray-600 hover:text-gray-900">My Collection</a>
+                        </div>
+                    </div>
+                    <div id="auth-buttons" class="auth-hidden">
+                        <a href="/sign-in" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                            Sign In
+                        </a>
+                    </div>
+                    <div id="user-info" style="display: none;"></div>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow">
+        <div class="max-w-6xl mx-auto px-4 py-8">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200">
+        <div class="max-w-6xl mx-auto px-4 py-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <!-- Company Info -->
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-4">AI Card Creator</h3>
+                    <p class="text-sm text-gray-600">
+                        Create unique trading cards powered by artificial intelligence.
+                    </p>
+                </div>
+
+                <!-- Quick Links -->
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-4">Quick Links</h3>
+                    <ul class="space-y-2">
+                        <li><a href="/" class="text-sm text-gray-600 hover:text-gray-900">Home</a></li>
+                        <li><a href="/explore" class="text-sm text-gray-600 hover:text-gray-900">Explore</a></li>
+                        <li><a href="/about" class="text-sm text-gray-600 hover:text-gray-900">About</a></li>
+                    </ul>
+                </div>
+
+                <!-- Features -->
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-4">Features</h3>
+                    <ul class="space-y-2">
+                        <li><a href="/create" class="text-sm text-gray-600 hover:text-gray-900">Create Cards</a></li>
+                        <li><a href="/packs" class="text-sm text-gray-600 hover:text-gray-900">Open Packs</a></li>
+                        <li><a href="/collection" class="text-sm text-gray-600 hover:text-gray-900">My Collection</a></li>
+                    </ul>
+                </div>
+
+                <!-- Legal -->
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-4">Legal</h3>
+                    <ul class="space-y-2">
+                        <li><a href="/privacy" class="text-sm text-gray-600 hover:text-gray-900">Privacy Policy</a></li>
+                        <li><a href="/terms" class="text-sm text-gray-600 hover:text-gray-900">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Bottom Footer -->
+            <div class="mt-8 pt-8 border-t border-gray-200">
+                <p class="text-sm text-center text-gray-600">
+                    © 2024 AI Card Creator. All rights reserved.
+                </p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

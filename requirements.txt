@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+jinja2
+python-multipart
+python-dotenv
+openai
+tenacity
+requests
+firebase-admin
+b2
