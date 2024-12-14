@@ -5,41 +5,69 @@
 {% block head %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Clear any existing instances
-        if (ui) {
-            ui.delete();
+        // Create a new UI instance specifically for this page
+        const authUI = new firebaseui.auth.AuthUI(firebase.auth());
+
+        // Get the current mode from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode') || 'signin';
+
+        // Update the page title and description based on mode
+        const titleElement = document.getElementById('auth-title');
+        const descElement = document.getElementById('auth-description');
+        const switchModeElement = document.getElementById('switch-mode');
+
+        if (mode === 'signup') {
+            titleElement.textContent = 'Create Account';
+            descElement.textContent = 'Sign up to start creating your own AI-powered trading cards';
+            switchModeElement.innerHTML = 'Already have an account? <a href="/sign-in?mode=signin" class="text-blue-600 hover:text-blue-800">Sign in</a>';
+        } else {
+            titleElement.textContent = 'Sign In';
+            descElement.textContent = 'Welcome back! Sign in to access your collection';
+            switchModeElement.innerHTML = 'New to AI Card Creator? <a href="/sign-in?mode=signup" class="text-blue-600 hover:text-blue-800">Create account</a>';
         }
 
         const uiConfig = {
-            signInOptions: [{
-                provider: firebase.auth.EmailAuthProvider.PROVIDER_ID,
-                requireDisplayName: false,
-                signInMethod: firebase.auth.EmailAuthProvider.EMAIL_PASSWORD_SIGN_IN_METHOD
-            }],
+            signInOptions: [
+                {
+                    provider: firebase.auth.EmailAuthProvider.PROVIDER_ID,
+                    requireDisplayName: mode === 'signup',
+                    signInMethod: firebase.auth.EmailAuthProvider.EMAIL_PASSWORD_SIGN_IN_METHOD,
+                }
+            ],
             signInFlow: 'popup',
+            credentialHelper: firebaseui.auth.CredentialHelper.NONE,
             callbacks: {
                 signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-                    // Handle successful sign-in
-																				if (authResult.user) {
-                        return true;
+                    if (authResult.user) {
+                        if (authResult.additionalUserInfo.isNewUser) {
+                            window.location.href = '/explore';
+                        } else {
+                            window.location.href = '/collection';
+                        }
                     }
                     return false;
                 },
                 signInFailure: function(error) {
-                    // Handle sign-in errors
                     console.error('Sign-in error:', error);
                     if (error.code === 'auth/account-exists-with-different-credential') {
-                        // Handle existing account with different credentials
                         alert('An account already exists with this email. Please sign in with the correct provider.');
                     }
                 }
             },
-            autoUpgradeAnonymousUsers: false,
-            signInSuccessUrl: '/collection'
+            tosUrl: '/terms',
+            privacyPolicyUrl: '/privacy'
         };
 
-        // Initialize UI with new config
-        const authUI = new firebaseui.auth.AuthUI(firebase.auth());
+        // Modify UI config based on mode
+        if (mode === 'signup') {
+            uiConfig.signInOptions[0].forceSameDevice = true;
+            uiConfig.signInOptions[0].requireDisplayName = true;
+        } else {
+            uiConfig.signInOptions[0].requireDisplayName = false;
+        }
+
+        // Start the UI
         authUI.start('#firebaseui-auth-container', uiConfig);
     });
 </script>
@@ -54,14 +82,25 @@
     .firebaseui-title {
         display: none !important;
     }
+    .firebaseui-tos {
+        text-align: center !important;
+    }
+    /* Hide the "First time signing in?" text that Firebase UI adds */
+    .firebaseui-id-page-password-sign-in .firebaseui-id-secondary-link {
+        display: none !important;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="max-w-md mx-auto mt-8">
     <div class="bg-white p-6 rounded shadow">
-        <h1 class="text-2xl mb-4 text-center">Sign In</h1>
+        <h1 id="auth-title" class="text-2xl mb-4 text-center">Sign In</h1>
+        <p id="auth-description" class="text-gray-600 text-center mb-6">Welcome back! Sign in to access your collection</p>
         <div id="firebaseui-auth-container"></div>
+        <div id="switch-mode" class="text-center mt-4 text-sm">
+            New to AI Card Creator? <a href="/sign-in?mode=signup" class="text-blue-600 hover:text-blue-800">Create account</a>
+        </div>
     </div>
 </div>
 {% endblock %}

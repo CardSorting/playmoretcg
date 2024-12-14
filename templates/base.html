@@ -30,7 +30,6 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
-        const ui = new firebaseui.auth.AuthUI(firebase.auth());
 
         // Token refresh handler
         async function refreshToken(user) {
@@ -62,7 +61,7 @@
                         // Handle token refresh failure
                         console.error('Failed to refresh token');
                         await firebase.auth().signOut();
-                        window.location.href = '/sign-in';
+                        window.location.href = '/sign-in?mode=signin';
                         return;
                     }
 
@@ -75,7 +74,7 @@
                                 tokenRefreshInterval = null;
                             }
                             await firebase.auth().signOut();
-                            window.location.href = '/sign-in';
+                            window.location.href = '/sign-in?mode=signin';
                         }
                     }, 3540000); // Refresh every 59 minutes (token expires in 1 hour)
                     
@@ -116,6 +115,12 @@
                     // Show/hide elements
                     document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'none');
                     document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'flex');
+
+                    // If we're on a protected page, redirect to sign-in
+                    const protectedPaths = ['/collection', '/create', '/packs'];
+                    if (protectedPaths.some(path => window.location.pathname.startsWith(path))) {
+                        window.location.href = '/sign-in?mode=signin';
+                    }
                 }
             } catch (error) {
                 console.error('Auth state change error:', error);
@@ -129,7 +134,8 @@
 
         function signOut() {
             firebase.auth().signOut().then(() => {
-                window.location.href = '/';
+                // Redirect to explore page after sign out
+                window.location.href = '/explore';
             }).catch((error) => {
                 console.error('Sign Out Error:', error);
             });
@@ -169,9 +175,14 @@
                         </div>
                     </div>
                     <div id="auth-buttons" class="auth-hidden">
-                        <a href="/sign-in" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
-                            Sign In
-                        </a>
+                        <div class="flex items-center space-x-4">
+                            <a href="/sign-in?mode=signin" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                                Sign In
+                            </a>
+                            <a href="/sign-in?mode=signup" class="text-gray-600 hover:text-gray-900">
+                                Create Account
+                            </a>
+                        </div>
                     </div>
                     <div id="user-info" style="display: none;"></div>
                 </div>
