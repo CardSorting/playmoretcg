@@ -11,6 +11,23 @@
         :root {
             --card-perspective: 1000px;
         }
+        /* Mobile drawer styles */
+        .mobile-drawer {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+        }
+        .mobile-drawer.open {
+            transform: translateX(0);
+        }
+        .drawer-backdrop {
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .drawer-backdrop.open {
+            opacity: 0.5;
+            visibility: visible;
+        }
         .preserve-3d {
             transform-style: preserve-3d;
             perspective: var(--card-perspective);
@@ -106,15 +123,28 @@
                         }
                     }, 3540000); // Refresh every 59 minutes (token expires in 1 hour)
                     
-                    // Update UI
-                    const userInfo = document.getElementById('user-info');
-                    const authButtons = document.getElementById('auth-buttons');
-                    if (userInfo && authButtons) {
+                    // Update UI for both desktop and mobile
+                    const updateUserInterface = async (container, isMobile = false) => {
+                        if (!container) return;
+                        
                         // Get user credits
                         const userDoc = await db.collection('users').doc(user.uid).get();
                         const credits = userDoc.data()?.credits || 0;
                         
-                        userInfo.innerHTML = `
+                        container.innerHTML = isMobile ? `
+                            <div class="space-y-3 mb-6">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                        <span class="text-white font-medium">${user.email[0].toUpperCase()}</span>
+                                    </div>
+                                    <span class="text-sm font-medium">${user.email}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-green-600">${credits} Credits</span>
+                                </div>
+                                <button onclick="signOut()" class="w-full text-red-600 hover:text-red-700 text-sm text-left py-2">Sign Out</button>
+                            </div>
+                        ` : `
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-2">
                                     <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
@@ -128,18 +158,43 @@
                                 <button onclick="signOut()" class="text-sm text-red-600 hover:text-red-700">Sign Out</button>
                             </div>
                         `;
-                        userInfo.style.display = 'block';
-                        authButtons.style.display = 'none';
-                    }
+                        container.style.display = 'block';
+                    };
                     
-                    // Show/hide elements
-                    document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'flex');
-                    document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'none');
+                    try {
+                        // Update desktop UI
+                        const userInfo = document.getElementById('user-info');
+                        const authButtons = document.getElementById('auth-buttons');
+                        if (userInfo && authButtons) {
+                            await updateUserInterface(userInfo);
+                            authButtons.style.display = 'none';
+                        }
+                    
+                        // Update mobile UI
+                        const mobileUserInfo = document.getElementById('mobile-user-info');
+                        const mobileAuthButtons = document.getElementById('mobile-auth-buttons');
+                        if (mobileUserInfo && mobileAuthButtons) {
+                            await updateUserInterface(mobileUserInfo, true);
+                            mobileAuthButtons.style.display = 'none';
+                        }
+                    
+                        // Show/hide elements
+                        document.querySelectorAll('.auth-required').forEach(el => {
+                            if (window.innerWidth < 768) {
+                                el.style.display = 'none'; // Always hide on mobile
+                            } else {
+                                el.style.display = 'flex';
+                            }
+                        });
+                        document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'none');
+                    } catch (error) {
+                        console.error('Error updating user interface:', error);
+                    }
                 } else {
                     // User is signed out
                     document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
                     
-                    // Update UI
+                    // Update desktop UI
                     const userInfo = document.getElementById('user-info');
                     const authButtons = document.getElementById('auth-buttons');
                     if (userInfo && authButtons) {
@@ -147,10 +202,18 @@
                         authButtons.style.display = 'flex';
                     }
                     
+                    // Update mobile UI
+                    const mobileUserInfo = document.getElementById('mobile-user-info');
+                    const mobileAuthButtons = document.getElementById('mobile-auth-buttons');
+                    if (mobileUserInfo && mobileAuthButtons) {
+                        mobileUserInfo.style.display = 'none';
+                        mobileAuthButtons.style.display = 'block';
+                    }
+                    
                     // Show/hide elements
                     document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'none');
                     document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'flex');
-
+                    
                     // If we're on a protected page, redirect to sign-in
                     const protectedPaths = ['/collection', '/create', '/packs', '/marketplace'];
                     if (protectedPaths.some(path => window.location.pathname.startsWith(path))) {
@@ -181,36 +244,29 @@
     <header class="bg-white border-b border-gray-200">
         <div class="max-w-6xl mx-auto">
             <!-- Top Navigation -->
-            <nav class="flex items-center justify-between h-16 px-4">
+            <nav class="flex items-center justify-between h-16 px-4 relative">
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-button" class="md:hidden p-2 rounded-md hover:bg-gray-100" aria-label="Menu">
+                    <svg class="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            
                 <!-- Left side -->
-                <div class="flex items-center space-x-8">
-                    <a href="/" class="flex items-center space-x-2">
+                <div class="flex items-center space-x-6">
+                    <a href="/" class="flex items-center">
                         <span class="text-xl font-bold text-gray-900">AI Card Creator</span>
                     </a>
-                    <div class="hidden md:flex space-x-6">
-                        <a href="/" class="text-gray-600 hover:text-gray-900">Home</a>
+                    <div class="hidden md:flex space-x-4">
                         <a href="/explore" class="text-gray-600 hover:text-gray-900">Explore</a>
                         <a href="/marketplace" class="text-gray-600 hover:text-gray-900">Marketplace</a>
+                        <a href="/create" class="auth-required text-gray-600 hover:text-gray-900" style="display: none;">Create</a>
                         <a href="/about" class="text-gray-600 hover:text-gray-900">About</a>
                     </div>
                 </div>
-
-                <!-- Right side -->
-                <div class="flex items-center space-x-6">
-                    <div class="auth-required" style="display: none;">
-                        <div class="flex items-center space-x-4">
-                            <a href="/marketplace" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600">
-                                Trade Cards
-                            </a>
-                            <a href="/packs" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">
-                                Open Pack
-                            </a>
-                            <div class="flex space-x-4">
-                                <a href="/collection" class="text-gray-600 hover:text-gray-900">My Collection</a>
-                                <a href="/create" class="text-gray-600 hover:text-gray-900">Create Card</a>
-                            </div>
-                        </div>
-                    </div>
+            
+                <!-- Right side - Only visible on desktop -->
+                <div class="hidden md:flex items-center space-x-4">
                     <div id="auth-buttons" class="auth-hidden">
                         <div class="flex items-center">
                             <a href="/sign-in" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
@@ -218,12 +274,98 @@
                             </a>
                         </div>
                     </div>
+                    <div class="auth-required" style="display: none;">
+                        <div class="flex items-center space-x-3">
+                            <a href="/packs" class="bg-green-500 text-white px-3 py-1.5 rounded hover:bg-green-600 text-sm">
+                                Open Pack
+                            </a>
+                            <a href="/collection" class="text-gray-600 hover:text-gray-900 text-sm">Collection</a>
+                        </div>
+                    </div>
                     <div id="user-info" style="display: none;"></div>
                 </div>
             </nav>
         </div>
     </header>
-
+    
+    <!-- Mobile Navigation Drawer -->
+    <div id="drawer-backdrop" class="drawer-backdrop fixed inset-0 bg-black z-40" style="display: none;"></div>
+    <div id="mobile-drawer" class="mobile-drawer fixed top-0 left-0 h-full w-64 bg-white shadow-lg z-50 overflow-y-auto">
+        <div class="p-4">
+            <div class="flex justify-between items-center mb-6">
+                <span class="text-xl font-bold text-gray-900">Menu</span>
+                <button id="close-drawer" class="p-2 rounded-md hover:bg-gray-100">
+                    <svg class="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Mobile Navigation Links -->
+            <div class="space-y-4">
+                <!-- Auth Status Section -->
+                <div class="mb-6">
+                    <div id="mobile-auth-buttons" class="auth-hidden">
+                        <a href="/sign-in" class="block w-full bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-center">
+                            Sign In with Google
+                        </a>
+                    </div>
+                    <div id="mobile-user-info" style="display: none;"></div>
+                </div>
+            
+                <!-- Navigation Links -->
+                <a href="/explore" class="block text-gray-600 hover:text-gray-900 py-2">Explore</a>
+                <a href="/marketplace" class="block text-gray-600 hover:text-gray-900 py-2">Marketplace</a>
+                <a href="/create" class="auth-required block text-gray-600 hover:text-gray-900 py-2" style="display: none;">Create</a>
+                <a href="/about" class="block text-gray-600 hover:text-gray-900 py-2">About</a>
+                
+                <!-- Auth Required Mobile Links -->
+                <div class="auth-required border-t border-gray-200 pt-4 mt-4" style="display: none;">
+                    <a href="/packs" class="block text-gray-600 hover:text-gray-900 py-2">Open Pack</a>
+                    <a href="/collection" class="block text-gray-600 hover:text-gray-900 py-2">Collection</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Drawer Control Script -->
+    <script>
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const closeDrawerButton = document.getElementById('close-drawer');
+        const mobileDrawer = document.getElementById('mobile-drawer');
+        const drawerBackdrop = document.getElementById('drawer-backdrop');
+    
+        function openDrawer() {
+            mobileDrawer.classList.add('open');
+            drawerBackdrop.classList.add('open');
+            drawerBackdrop.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+    
+        function closeDrawer() {
+            mobileDrawer.classList.remove('open');
+            drawerBackdrop.classList.remove('open');
+            setTimeout(() => {
+                drawerBackdrop.style.display = 'none';
+            }, 300);
+            document.body.style.overflow = '';
+        }
+    
+        mobileMenuButton.addEventListener('click', openDrawer);
+        closeDrawerButton.addEventListener('click', closeDrawer);
+        drawerBackdrop.addEventListener('click', closeDrawer);
+    
+        // Close drawer on navigation
+        mobileDrawer.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', closeDrawer);
+        });
+    
+        // Handle escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeDrawer();
+        });
+    </script>
+    
     <!-- Main Content -->
     <main class="flex-grow">
         <div class="max-w-6xl mx-auto px-4 py-8">
