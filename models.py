@@ -24,6 +24,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, default=datetime.utcnow)
     display_name = Column(String, nullable=True)
+    credits = Column(Integer, default=100, nullable=False)  # Starting credits for new users
     
     # Relationships
     cards = relationship("Card", back_populates="user", cascade="all, delete-orphan")
@@ -34,7 +35,8 @@ class User(Base):
         return cls(
             id=firebase_user.uid,
             email=firebase_user.email,
-            display_name=firebase_user.display_name
+            display_name=firebase_user.display_name,
+            credits=100  # Give new users 100 credits
         )
     
     @classmethod
@@ -51,6 +53,24 @@ class User(Base):
         """Update user's last login time."""
         self.last_login = datetime.utcnow()
         db_session.commit()
+
+    def add_credits(self, db_session, amount):
+        """Add credits to user's balance."""
+        self.credits += amount
+        db_session.commit()
+        return self.credits
+
+    def deduct_credits(self, db_session, amount):
+        """Deduct credits from user's balance if sufficient funds exist."""
+        if self.credits >= amount:
+            self.credits -= amount
+            db_session.commit()
+            return True
+        return False
+
+    def get_credits(self):
+        """Get user's current credit balance."""
+        return self.credits
 
 class CardImage(Base):
     __tablename__ = "card_images"

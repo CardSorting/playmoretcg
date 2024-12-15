@@ -29,7 +29,8 @@ def user_to_dict(user_data: Dict[str, Any]) -> Dict[str, Any]:
         'email': user_data.get('email'),
         'display_name': user_data.get('display_name'),
         'created_at': user_data.get('created_at', datetime.utcnow()),
-        'last_login': datetime.utcnow()
+        'last_login': datetime.utcnow(),
+        'credits': user_data.get('credits', 100)  # Default 100 credits for new users
     }
 
 def card_to_dict(card_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -84,6 +85,31 @@ def delete_user(user_id: str) -> bool:
     
     batch.commit()
     return True
+
+# Credit Operations
+def get_user_credits(user_id: str) -> int:
+    """Get user's current credit balance."""
+    user = get_user(user_id)
+    return user.get('credits', 0) if user else 0
+
+def add_credits(user_id: str, amount: int) -> int:
+    """Add credits to user's balance."""
+    user_ref = db.collection('users').document(user_id)
+    current_credits = get_user_credits(user_id)
+    new_balance = current_credits + amount
+    user_ref.update({'credits': new_balance})
+    return new_balance
+
+def deduct_credits(user_id: str, amount: int) -> bool:
+    """Deduct credits from user's balance if sufficient funds exist."""
+    user_ref = db.collection('users').document(user_id)
+    current_credits = get_user_credits(user_id)
+    
+    if current_credits >= amount:
+        new_balance = current_credits - amount
+        user_ref.update({'credits': new_balance})
+        return True
+    return False
 
 # Card Operations
 def create_card(card_data: Dict[str, Any], image_url: Optional[str] = None, filename: Optional[str] = None) -> Dict[str, Any]:
@@ -179,9 +205,13 @@ def claim_card(card_id: str, user_id: str) -> Dict[str, Any]:
         logger.error(f"Error claiming card {card_id} for user {user_id}: {e}")
         raise
 
-def open_pack(user_id: str) -> List[Dict[str, Any]]:
+def open_pack(user_id: str, pack_cost: int = 50) -> List[Dict[str, Any]]:
     """Open a pack of cards for a user."""
     try:
+        # Check if user has enough credits
+        if not deduct_credits(user_id, pack_cost):
+            raise ValueError(f"Insufficient credits. Pack costs {pack_cost} credits.")
+            
         pack_cards = []
         claimed_ids = []
         
