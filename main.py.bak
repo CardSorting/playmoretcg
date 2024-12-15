@@ -16,7 +16,6 @@ from firebase_admin import auth
 import card_generator
 import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
-from router_config import configure_routers
 
 # Configure logging
 logging.basicConfig(
@@ -44,9 +43,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize templates
 templates = Jinja2Templates(directory="templates")
-
-# Configure marketplace routers
-configure_routers(app)
 
 # Admin user IDs
 ADMIN_USERS = {'fhn34qtflHh9rVDJsrlDnlUxn3M2'}  # Admin user

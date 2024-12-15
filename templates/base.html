@@ -110,6 +110,10 @@
                     const userInfo = document.getElementById('user-info');
                     const authButtons = document.getElementById('auth-buttons');
                     if (userInfo && authButtons) {
+                        // Get user credits
+                        const userDoc = await db.collection('users').doc(user.uid).get();
+                        const credits = userDoc.data()?.credits || 0;
+                        
                         userInfo.innerHTML = `
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-2">
@@ -117,6 +121,9 @@
                                         <span class="text-white font-medium">${user.email[0].toUpperCase()}</span>
                                     </div>
                                     <span class="text-sm font-medium">${user.email}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-green-600">${credits} Credits</span>
                                 </div>
                                 <button onclick="signOut()" class="text-sm text-red-600 hover:text-red-700">Sign Out</button>
                             </div>
@@ -145,7 +152,7 @@
                     document.querySelectorAll('.auth-hidden').forEach(el => el.style.display = 'flex');
 
                     // If we're on a protected page, redirect to sign-in
-                    const protectedPaths = ['/collection', '/create', '/packs'];
+                    const protectedPaths = ['/collection', '/create', '/packs', '/marketplace'];
                     if (protectedPaths.some(path => window.location.pathname.startsWith(path))) {
                         window.location.href = '/sign-in';
                     }
@@ -183,6 +190,7 @@
                     <div class="hidden md:flex space-x-6">
                         <a href="/" class="text-gray-600 hover:text-gray-900">Home</a>
                         <a href="/explore" class="text-gray-600 hover:text-gray-900">Explore</a>
+                        <a href="/marketplace" class="text-gray-600 hover:text-gray-900">Marketplace</a>
                         <a href="/about" class="text-gray-600 hover:text-gray-900">About</a>
                     </div>
                 </div>
@@ -191,13 +199,16 @@
                 <div class="flex items-center space-x-6">
                     <div class="auth-required" style="display: none;">
                         <div class="flex items-center space-x-4">
-                            <a href="/create" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
-                                Create Card
+                            <a href="/marketplace" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600">
+                                Trade Cards
                             </a>
                             <a href="/packs" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">
                                 Open Pack
                             </a>
-                            <a href="/collection" class="text-gray-600 hover:text-gray-900">My Collection</a>
+                            <div class="flex space-x-4">
+                                <a href="/collection" class="text-gray-600 hover:text-gray-900">My Collection</a>
+                                <a href="/create" class="text-gray-600 hover:text-gray-900">Create Card</a>
+                            </div>
                         </div>
                     </div>
                     <div id="auth-buttons" class="auth-hidden">
@@ -238,6 +249,7 @@
                     <ul class="space-y-2">
                         <li><a href="/" class="text-sm text-gray-600 hover:text-gray-900">Home</a></li>
                         <li><a href="/explore" class="text-sm text-gray-600 hover:text-gray-900">Explore</a></li>
+                        <li><a href="/marketplace" class="text-sm text-gray-600 hover:text-gray-900">Marketplace</a></li>
                         <li><a href="/about" class="text-sm text-gray-600 hover:text-gray-900">About</a></li>
                     </ul>
                 </div>
@@ -249,15 +261,17 @@
                         <li><a href="/create" class="text-sm text-gray-600 hover:text-gray-900">Create Cards</a></li>
                         <li><a href="/packs" class="text-sm text-gray-600 hover:text-gray-900">Open Packs</a></li>
                         <li><a href="/collection" class="text-sm text-gray-600 hover:text-gray-900">My Collection</a></li>
+                        <li><a href="/marketplace" class="text-sm text-gray-600 hover:text-gray-900">Trade Cards</a></li>
                     </ul>
                 </div>
 
-                <!-- Legal -->
+                <!-- Trading -->
                 <div>
-                    <h3 class="text-sm font-semibold text-gray-900 mb-4">Legal</h3>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-4">Trading</h3>
                     <ul class="space-y-2">
-                        <li><a href="/privacy" class="text-sm text-gray-600 hover:text-gray-900">Privacy Policy</a></li>
-                        <li><a href="/terms" class="text-sm text-gray-600 hover:text-gray-900">Terms of Service</a></li>
+                        <li><a href="/marketplace?type=Fixed Price" class="text-sm text-gray-600 hover:text-gray-900">Buy Cards</a></li>
+                        <li><a href="/marketplace?type=Auction" class="text-sm text-gray-600 hover:text-gray-900">Card Auctions</a></li>
+                        <li><a href="/marketplace" class="text-sm text-gray-600 hover:text-gray-900">List Cards</a></li>
                     </ul>
                 </div>
             </div>

@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+
+{% block title %}My Listings - PlayMore TCG{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Tabs -->
+    <div class="mb-8">
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex space-x-8">
+                <button onclick="switchTab('active')" 
+                        class="tab-button active-tab border-blue-500 text-blue-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                    Active Listings
+                </button>
+                <button onclick="switchTab('sold')"
+                        class="tab-button text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm">
+                    Sold Items
+                </button>
+                <button onclick="switchTab('purchases')"
+                        class="tab-button text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm">
+                    My Purchases
+                </button>
+                <button onclick="switchTab('bids')"
+                        class="tab-button text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm">
+                    My Bids
+                </button>
+                <button onclick="switchTab('expired')"
+                        class="tab-button text-gray-500 hover:text-gray-700 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm">
+                    Expired/Cancelled
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Content Sections -->
+    <div id="active" class="tab-content">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Active Listings</h2>
+            <button onclick="showListingModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                List New Card
+            </button>
+        </div>
+        <div id="activeListings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Active listings will be populated here -->
+        </div>
+    </div>
+
+    <div id="sold" class="tab-content hidden">
+        <h2 class="text-2xl font-bold mb-6">Sold Items</h2>
+        <div id="soldListings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Sold listings will be populated here -->
+        </div>
+    </div>
+
+    <div id="purchases" class="tab-content hidden">
+        <h2 class="text-2xl font-bold mb-6">My Purchases</h2>
+        <div id="purchasedListings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Purchased items will be populated here -->
+        </div>
+    </div>
+
+    <div id="bids" class="tab-content hidden">
+        <h2 class="text-2xl font-bold mb-6">My Active Bids</h2>
+        <div id="activeBids" class="space-y-4">
+            <!-- Active bids will be populated here -->
+        </div>
+    </div>
+
+    <div id="expired" class="tab-content hidden">
+        <h2 class="text-2xl font-bold mb-6">Expired & Cancelled Listings</h2>
+        <div id="expiredListings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Expired/cancelled listings will be populated here -->
+        </div>
+    </div>
+
+    <!-- Create Listing Modal -->
+    <div id="listingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg p-8 max-w-md w-full">
+            <h2 class="text-2xl font-bold mb-4">List a Card</h2>
+            <form id="listingForm" onsubmit="createListing(event)">
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Card</label>
+                    <select id="cardSelect" name="card_id" required class="w-full border rounded px-3 py-2">
+                        <!-- User's cards will be populated here -->
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Listing Type</label>
+                    <select id="listingType" name="listing_type" required class="w-full border rounded px-3 py-2" onchange="togglePriceLabel()">
+                        <option value="Fixed Price">Fixed Price</option>
+                        <option value="Auction">Auction</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label id="priceLabel" class="block text-gray-700 mb-2">Price</label>
+                    <input type="number" name="price" required min="1" step="0.01" class="w-full border rounded px-3 py-2">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Duration</label>
+                    <select name="duration" required class="w-full border rounded px-3 py-2">
+                        <option value="1 Hour">1 Hour</option>
+                        <option value="6 Hours">6 Hours</option>
+                        <option value="12 Hours">12 Hours</option>
+                        <option value="24 Hours">24 Hours</option>
+                        <option value="3 Days">3 Days</option>
+                        <option value="7 Days">7 Days</option>
+                    </select>
+                </div>
+                
+                <div class="flex justify-end space-x-4">
+                    <button type="button" onclick="hideListingModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded">
+                        Cancel
+                    </button>
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                        Create Listing
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+let updateInterval = null;
+
+// Initialize Firebase Auth listener
+firebase.auth().onAuthStateChanged(function(user) {
+    if (user) {
+        currentUser = user;
+        loadUserCards();
+        loadAllListings();
+        // Start periodic updates
+        updateInterval = setInterval(loadAllListings, 10000);
+    } else {
+        window.location.href = '/sign-in';
+    }
+});
+
+function switchTab(tabId) {
+    // Update tab buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('border-blue-500', 'text-blue-600');
+        button.classList.add('text-gray-500', 'border-transparent');
+    });
+    document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('border-blue-500', 'text-blue-600');
+    
+    // Show selected content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    document.getElementById(tabId).classList.remove('hidden');
+}
+
+function showListingModal() {
+    document.getElementById('listingModal').classList.remove('hidden');
+    document.getElementById('listingModal').classList.add('flex');
+}
+
+function hideListingModal() {
+    document.getElementById('listingModal').classList.remove('flex');
+    document.getElementById('listingModal').classList.add('hidden');
+}
+
+function togglePriceLabel() {
+    const listingType = document.getElementById('listingType').value;
+    const priceLabel = document.getElementById('priceLabel');
+    priceLabel.textContent = listingType === 'Auction' ? 'Starting Bid' : 'Price';
+}
+
+async function loadUserCards() {
+    try {
+        const response = await fetch('/api/cards/user');
+        const cards = await response.json();
+        const select = document.getElementById('cardSelect');
+        select.innerHTML = cards.map(card => 
+            `<option value="${card.id}">${card.name} (${card.rarity})</option>`
+        ).join('');
+    } catch (error) {
+        console.error('Error loading user cards:', error);
+    }
+}
+
+async function loadAllListings() {
+    try {
+        // Load active listings
+        const activeResponse = await fetch('/api/listings/user/active');
+        const activeListings = await activeResponse.json();
+        displayActiveListings(activeListings);
+
+        // Load sold listings
+        const soldResponse = await fetch('/api/listings/user/sold');
+        const soldListings = await soldResponse.json();
+        displaySoldListings(soldListings);
+
+        // Load purchases
+        const purchasesResponse = await fetch('/api/listings/user/purchases');
+        const purchases = await purchasesResponse.json();
+        displayPurchases(purchases);
+
+        // Load active bids
+        const bidsResponse = await fetch('/api/listings/user/bids');
+        const bids = await bidsResponse.json();
+        displayBids(bids);
+
+        // Load expired/cancelled listings
+        const expiredResponse = await fetch('/api/listings/user/expired');
+        const expiredListings = await expiredResponse.json();
+        displayExpiredListings(expiredListings);
+    } catch (error) {
+        console.error('Error loading listings:', error);
+    }
+}
+
+function displayActiveListings(listings) {
+    const container = document.getElementById('activeListings');
+    container.innerHTML = listings.map(listing => `
+        <div class="border rounded-lg p-4 shadow">
+            <img src="${listing.card.image_url}" alt="${listing.card.name}" class="w-full h-48 object-contain mb-4">
+            <h3 class="text-xl font-bold mb-2">${listing.card.name}</h3>
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold">${listing.listing_type}</span>
+                <span class="text-green-600 font-bold">${listing.current_price} Credits</span>
+            </div>
+            <div class="text-sm text-gray-500 mb-4">
+                Time Left: ${listing.time_left}
+            </div>
+            ${listing.listing_type === 'Auction' ? `
+                <p class="text-sm mb-2">Current Bids: ${listing.bid_count}</p>
+            ` : ''}
+            <button onclick="cancelListing('${listing.id}')" 
+                    class="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+                Cancel Listing
+            </button>
+        </div>
+    `).join('');
+}
+
+function displaySoldListings(listings) {
+    const container = document.getElementById('soldListings');
+    container.innerHTML = listings.map(listing => `
+        <div class="border rounded-lg p-4 shadow">
+            <img src="${listing.card.image_url}" alt="${listing.card.name}" class="w-full h-48 object-contain mb-4">
+            <h3 class="text-xl font-bold mb-2">${listing.card.name}</h3>
+            <div class="text-green-600 font-bold mb-2">Sold for ${listing.current_price} Credits</div>
+            <div class="text-sm text-gray-500">
+                <p>Buyer: ${listing.buyer.display_name}</p>
+                <p>Sold on: ${new Date(listing.sold_at).toLocaleDateString()}</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayPurchases(purchases) {
+    const container = document.getElementById('purchasedListings');
+    container.innerHTML = purchases.map(listing => `
+        <div class="border rounded-lg p-4 shadow">
+            <img src="${listing.card.image_url}" alt="${listing.card.name}" class="w-full h-48 object-contain mb-4">
+            <h3 class="text-xl font-bold mb-2">${listing.card.name}</h3>
+            <div class="text-green-600 font-bold mb-2">Purchased for ${listing.current_price} Credits</div>
+            <div class="text-sm text-gray-500">
+                <p>Seller: ${listing.seller.display_name}</p>
+                <p>Purchased on: ${new Date(listing.sold_at).toLocaleDateString()}</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayBids(bids) {
+    const container = document.getElementById('activeBids');
+    container.innerHTML = bids.map(bid => `
+        <div class="border rounded-lg p-4 shadow">
+            <div class="flex items-center space-x-4">
+                <img src="${bid.listing.card.image_url}" alt="${bid.listing.card.name}" class="w-24 h-24 object-contain">
+                <div class="flex-grow">
+                    <h3 class="font-bold">${bid.listing.card.name}</h3>
+                    <p class="text-green-600">Your Bid: ${bid.amount} Credits</p>
+                    <p class="text-sm text-gray-500">Current Highest: ${bid.listing.current_price} Credits</p>
+                    <p class="text-sm text-gray-500">Time Left: ${bid.listing.time_left}</p>
+                </div>
+                ${bid.listing.current_price > bid.amount ? `
+                    <div class="text-red-500">Outbid</div>
+                ` : `
+                    <div class="text-green-500">Highest Bidder</div>
+                `}
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayExpiredListings(listings) {
+    const container = document.getElementById('expiredListings');
+    container.innerHTML = listings.map(listing => `
+        <div class="border rounded-lg p-4 shadow">
+            <img src="${listing.card.image_url}" alt="${listing.card.name}" class="w-full h-48 object-contain mb-4">
+            <h3 class="text-xl font-bold mb-2">${listing.card.name}</h3>
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold">${listing.listing_type}</span>
+                <span class="text-gray-600">${listing.current_price} Credits</span>
+            </div>
+            <div class="text-sm text-red-500 mb-2">
+                ${listing.status === 'Expired' ? 'Expired' : 'Cancelled'}
+            </div>
+            <button onclick="relistCard('${listing.card.id}')" 
+                    class="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                Relist Card
+            </button>
+        </div>
+    `).join('');
+}
+
+async function createListing(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    try {
+        const response = await fetch('/api/listings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            },
+            body: JSON.stringify(Object.fromEntries(formData))
+        });
+        
+        if (response.ok) {
+            hideListingModal();
+            loadAllListings();
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error creating listing:', error);
+        alert('Failed to create listing');
+    }
+}
+
+async function cancelListing(listingId) {
+    if (!confirm('Are you sure you want to cancel this listing?')) return;
+    
+    try {
+        const response = await fetch(`/api/listings/${listingId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            }
+        });
+        
+        if (response.ok) {
+            loadAllListings();
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error cancelling listing:', error);
+        alert('Failed to cancel listing');
+    }
+}
+
+async function relistCard(cardId) {
+    // Pre-fill the listing modal with the card
+    const select = document.getElementById('cardSelect');
+    select.value = cardId;
+    showListingModal();
+}
+
+// Cleanup interval when leaving page
+window.addEventListener('beforeunload', function() {
+    if (updateInterval) {
+        clearInterval(updateInterval);
+    }
+});
+</script>
+{% endblock %}
