@@ -14,44 +14,29 @@
 
     <!-- Featured Cards Grid -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <!-- Example Card 1 -->
-        <div class="bg-white rounded-lg shadow-md overflow-hidden">
-            <div class="aspect-square bg-gray-200"></div>
+        {% for card in cards %}
+        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200">
+            <div class="aspect-square bg-gray-200 relative overflow-hidden">
+                {% if card.images and card.images[0].backblaze_url %}
+                <img src="{{ card.images[0].backblaze_url }}" alt="{{ card.name }}" class="absolute inset-0 w-full h-full object-cover">
+                {% endif %}
+            </div>
             <div class="p-4">
-                <h3 class="font-semibold mb-2">Mystic Dragon</h3>
-                <p class="text-sm text-gray-600">Legendary Creature</p>
+                <h3 class="font-semibold mb-2">{{ card.name }}</h3>
+                <p class="text-sm text-gray-600">{{ card.type }}</p>
                 <div class="mt-4 flex justify-between items-center">
-                    <span class="text-sm font-medium text-blue-600">Rare</span>
+                    <span class="text-sm font-medium
+                        {% if card.rarity == 'Mythic Rare' %}text-purple-600
+                        {% elif card.rarity == 'Rare' %}text-blue-600
+                        {% elif card.rarity == 'Uncommon' %}text-green-600
+                        {% else %}text-gray-600{% endif %}">
+                        {{ card.rarity }}
+                    </span>
                     <span class="text-sm text-gray-500">Created by AI</span>
                 </div>
             </div>
         </div>
-
-        <!-- Example Card 2 -->
-        <div class="bg-white rounded-lg shadow-md overflow-hidden">
-            <div class="aspect-square bg-gray-200"></div>
-            <div class="p-4">
-                <h3 class="font-semibold mb-2">Ancient Artifact</h3>
-                <p class="text-sm text-gray-600">Mythic Artifact</p>
-                <div class="mt-4 flex justify-between items-center">
-                    <span class="text-sm font-medium text-purple-600">Mythic Rare</span>
-                    <span class="text-sm text-gray-500">Created by AI</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Example Card 3 -->
-        <div class="bg-white rounded-lg shadow-md overflow-hidden">
-            <div class="aspect-square bg-gray-200"></div>
-            <div class="p-4">
-                <h3 class="font-semibold mb-2">Enchanted Forest</h3>
-                <p class="text-sm text-gray-600">Land Card</p>
-                <div class="mt-4 flex justify-between items-center">
-                    <span class="text-sm font-medium text-green-600">Uncommon</span>
-                    <span class="text-sm text-gray-500">Created by AI</span>
-                </div>
-            </div>
-        </div>
+        {% endfor %}
     </div>
 
     <!-- Call to Action -->
