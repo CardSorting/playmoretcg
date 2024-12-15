@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Marketplace - PlayMore TCG{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Marketplace</h1>
+        <div class="flex space-x-4">
+            <button onclick="showListingModal()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                List a Card
+            </button>
+            <select id="listingTypeFilter" onchange="filterListings()" class="border rounded px-4 py-2">
+                <option value="all">All Listings</option>
+                <option value="Fixed Price">Buy Now</option>
+                <option value="Auction">Auctions</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Active Listings -->
+    <div id="activeListings" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Listings will be populated here -->
+    </div>
+
+    <!-- Create Listing Modal -->
+    <div id="listingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg p-8 max-w-md w-full">
+            <h2 class="text-2xl font-bold mb-4">List a Card</h2>
+            <form id="listingForm" onsubmit="createListing(event)">
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Card</label>
+                    <select id="cardSelect" name="card_id" required class="w-full border rounded px-3 py-2">
+                        <!-- User's cards will be populated here -->
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Listing Type</label>
+                    <select id="listingType" name="listing_type" required class="w-full border rounded px-3 py-2" onchange="togglePriceLabel()">
+                        <option value="Fixed Price">Fixed Price</option>
+                        <option value="Auction">Auction</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label id="priceLabel" class="block text-gray-700 mb-2">Price</label>
+                    <input type="number" name="price" required min="1" step="0.01" class="w-full border rounded px-3 py-2">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Duration</label>
+                    <select name="duration" required class="w-full border rounded px-3 py-2">
+                        <option value="1 Hour">1 Hour</option>
+                        <option value="6 Hours">6 Hours</option>
+                        <option value="12 Hours">12 Hours</option>
+                        <option value="24 Hours">24 Hours</option>
+                        <option value="3 Days">3 Days</option>
+                        <option value="7 Days">7 Days</option>
+                    </select>
+                </div>
+                
+                <div class="flex justify-end space-x-4">
+                    <button type="button" onclick="hideListingModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded">
+                        Cancel
+                    </button>
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                        Create Listing
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+let listingsUpdateInterval = null;
+
+// Initialize Firebase Auth listener
+firebase.auth().onAuthStateChanged(function(user) {
+    if (user) {
+        currentUser = user;
+        loadUserCards();
+        loadListings();
+        // Start periodic updates for auctions
+        listingsUpdateInterval = setInterval(loadListings, 10000);
+    } else {
+        window.location.href = '/sign-in';
+    }
+});
+
+function showListingModal() {
+    document.getElementById('listingModal').classList.remove('hidden');
+    document.getElementById('listingModal').classList.add('flex');
+}
+
+function hideListingModal() {
+    document.getElementById('listingModal').classList.remove('flex');
+    document.getElementById('listingModal').classList.add('hidden');
+}
+
+function togglePriceLabel() {
+    const listingType = document.getElementById('listingType').value;
+    const priceLabel = document.getElementById('priceLabel');
+    priceLabel.textContent = listingType === 'Auction' ? 'Starting Bid' : 'Price';
+}
+
+async function loadUserCards() {
+    try {
+        const response = await fetch('/api/cards/user');
+        const cards = await response.json();
+        const select = document.getElementById('cardSelect');
+        select.innerHTML = cards.map(card => 
+            `<option value="${card.id}">${card.name} (${card.rarity})</option>`
+        ).join('');
+    } catch (error) {
+        console.error('Error loading user cards:', error);
+    }
+}
+
+async function loadListings() {
+    try {
+        const filter = document.getElementById('listingTypeFilter').value;
+        const url = filter === 'all' ? '/api/listings' : `/api/listings?type=${filter}`;
+        const response = await fetch(url);
+        const listings = await response.json();
+        displayListings(listings);
+    } catch (error) {
+        console.error('Error loading listings:', error);
+    }
+}
+
+function displayListings(listings) {
+    const container = document.getElementById('activeListings');
+    container.innerHTML = listings.map(listing => `
+        <div class="border rounded-lg p-4 shadow hover:shadow-lg transition-shadow">
+            <img src="${listing.card.image_url}" alt="${listing.card.name}" class="w-full h-48 object-contain mb-4">
+            <h3 class="text-xl font-bold mb-2">${listing.card.name}</h3>
+            <p class="text-gray-600 mb-2">${listing.card.rarity}</p>
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold">${listing.listing_type}</span>
+                <span class="text-green-600 font-bold">${listing.current_price} Credits</span>
+            </div>
+            <div class="text-sm text-gray-500 mb-4">
+                Time Left: ${listing.time_left}
+            </div>
+            ${listing.listing_type === 'Auction' ? `
+                <div class="mb-4">
+                    <p class="text-sm">Current Bids: ${listing.bid_count}</p>
+                    <div class="flex space-x-2 mt-2">
+                        <input type="number" id="bid_${listing.id}" class="border rounded px-2 py-1 w-full" 
+                               min="${listing.current_price + 1}" step="1" placeholder="Bid amount">
+                        <button onclick="placeBid('${listing.id}')" class="bg-green-500 hover:bg-green-600 text-white px-4 py-1 rounded">
+                            Bid
+                        </button>
+                    </div>
+                </div>
+            ` : `
+                <button onclick="purchaseListing('${listing.id}')" class="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                    Buy Now
+                </button>
+            `}
+        </div>
+    `).join('');
+}
+
+async function createListing(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    try {
+        const response = await fetch('/api/listings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            },
+            body: JSON.stringify(Object.fromEntries(formData))
+        });
+        
+        if (response.ok) {
+            hideListingModal();
+            loadListings();
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error creating listing:', error);
+        alert('Failed to create listing');
+    }
+}
+
+async function placeBid(listingId) {
+    const bidAmount = document.getElementById(`bid_${listingId}`).value;
+    
+    try {
+        const response = await fetch(`/api/listings/${listingId}/bid`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            },
+            body: JSON.stringify({ amount: parseFloat(bidAmount) })
+        });
+        
+        if (response.ok) {
+            loadListings();
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error placing bid:', error);
+        alert('Failed to place bid');
+    }
+}
+
+async function purchaseListing(listingId) {
+    try {
+        const response = await fetch(`/api/listings/${listingId}/purchase`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            }
+        });
+        
+        if (response.ok) {
+            loadListings();
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error purchasing listing:', error);
+        alert('Failed to purchase listing');
+    }
+}
+
+// Cleanup interval when leaving page
+window.addEventListener('beforeunload', function() {
+    if (listingsUpdateInterval) {
+        clearInterval(listingsUpdateInterval);
+    }
+});
+</script>
+{% endblock %}

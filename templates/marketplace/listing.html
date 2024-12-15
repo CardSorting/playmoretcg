@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}{{ listing.card.name }} - Marketplace - PlayMore TCG{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- Card Image and Details -->
+        <div>
+            <img src="{{ listing.card.image_url }}" alt="{{ listing.card.name }}" class="w-full rounded-lg shadow-lg mb-4">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h1 class="text-3xl font-bold mb-2">{{ listing.card.name }}</h1>
+                <p class="text-gray-600 mb-4">{{ listing.card.rarity }}</p>
+                <div class="border-t pt-4">
+                    <p class="mb-2"><span class="font-semibold">Type:</span> {{ listing.card.type }}</p>
+                    <p class="mb-2"><span class="font-semibold">Color:</span> {{ listing.card.color }}</p>
+                    {% if listing.card.manaCost %}
+                    <p class="mb-2"><span class="font-semibold">Mana Cost:</span> {{ listing.card.manaCost }}</p>
+                    {% endif %}
+                    {% if listing.card.abilities %}
+                    <p class="mb-2"><span class="font-semibold">Abilities:</span> {{ listing.card.abilities }}</p>
+                    {% endif %}
+                    {% if listing.card.flavorText %}
+                    <p class="italic text-gray-600 mt-4">{{ listing.card.flavorText }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Listing Details -->
+        <div>
+            <div class="bg-white rounded-lg shadow p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="text-xl font-bold">{{ listing.listing_type }}</span>
+                    <span class="text-green-600 text-2xl font-bold">{{ listing.current_price }} Credits</span>
+                </div>
+                
+                <div class="mb-4">
+                    <p class="text-gray-600">Seller: {{ listing.seller.display_name }}</p>
+                    <p class="text-gray-600">Listed: {{ listing.created_at }}</p>
+                    <p class="text-gray-600">Time Left: <span id="timeLeft">{{ listing.time_left }}</span></p>
+                </div>
+
+                {% if listing.listing_type == 'Auction' %}
+                    <!-- Auction Section -->
+                    <div class="border-t pt-4 mb-4">
+                        <h3 class="text-lg font-semibold mb-2">Place a Bid</h3>
+                        <div class="flex space-x-2">
+                            <input type="number" id="bidAmount" 
+                                   class="border rounded px-3 py-2 w-full"
+                                   min="{{ listing.current_price + 1 }}" 
+                                   step="1" 
+                                   placeholder="Enter bid amount">
+                            <button onclick="placeBid()" 
+                                    class="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded">
+                                Bid
+                            </button>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-2">
+                            Minimum bid: {{ listing.current_price + 1 }} Credits
+                        </p>
+                    </div>
+
+                    <!-- Bid History -->
+                    <div class="border-t pt-4">
+                        <h3 class="text-lg font-semibold mb-4">Bid History</h3>
+                        <div id="bidHistory" class="space-y-2">
+                            {% for bid in listing.bids %}
+                            <div class="flex justify-between items-center">
+                                <span>{{ bid.bidder.display_name }}</span>
+                                <span class="font-semibold">{{ bid.amount }} Credits</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% else %}
+                    <!-- Fixed Price Purchase -->
+                    <button onclick="purchaseListing()" 
+                            class="w-full bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded text-lg font-semibold">
+                        Buy Now
+                    </button>
+                {% endif %}
+            </div>
+
+            <!-- Similar Listings -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">Similar Listings</h3>
+                <div id="similarListings" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Similar listings will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+const listingId = '{{ listing.id }}';
+let updateInterval = null;
+
+// Initialize Firebase Auth listener
+firebase.auth().onAuthStateChanged(function(user) {
+    if (user) {
+        currentUser = user;
+        startUpdates();
+    } else {
+        window.location.href = '/sign-in';
+    }
+});
+
+function startUpdates() {
+    // Update listing data every 5 seconds for auctions
+    if ('{{ listing.listing_type }}' === 'Auction') {
+        updateInterval = setInterval(updateListingData, 5000);
+    }
+    // Load similar listings once
+    loadSimilarListings();
+}
+
+async function updateListingData() {
+    try {
+        const response = await fetch(`/api/listings/${listingId}`);
+        const listing = await response.json();
+        
+        // Update current price and time left
+        document.getElementById('timeLeft').textContent = listing.time_left;
+        
+        // Update bid history for auctions
+        if (listing.listing_type === 'Auction') {
+            const bidHistory = document.getElementById('bidHistory');
+            bidHistory.innerHTML = listing.bids.map(bid => `
+                <div class="flex justify-between items-center">
+                    <span>${bid.bidder.display_name}</span>
+                    <span class="font-semibold">${bid.amount} Credits</span>
+                </div>
+            `).join('');
+            
+            // Update minimum bid input
+            const bidInput = document.getElementById('bidAmount');
+            if (bidInput) {
+                bidInput.min = listing.current_price + 1;
+            }
+        }
+        
+        // Redirect if listing is no longer active
+        if (listing.status !== 'Active') {
+            clearInterval(updateInterval);
+            window.location.href = '/marketplace';
+        }
+    } catch (error) {
+        console.error('Error updating listing data:', error);
+    }
+}
+
+async function placeBid() {
+    const amount = document.getElementById('bidAmount').value;
+    
+    try {
+        const response = await fetch(`/api/listings/${listingId}/bid`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            },
+            body: JSON.stringify({ amount: parseFloat(amount) })
+        });
+        
+        if (response.ok) {
+            updateListingData();
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error placing bid:', error);
+        alert('Failed to place bid');
+    }
+}
+
+async function purchaseListing() {
+    try {
+        const response = await fetch(`/api/listings/${listingId}/purchase`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${await currentUser.getIdToken()}`
+            }
+        });
+        
+        if (response.ok) {
+            window.location.href = '/collection';
+        } else {
+            const error = await response.json();
+            alert(error.detail);
+        }
+    } catch (error) {
+        console.error('Error purchasing listing:', error);
+        alert('Failed to purchase listing');
+    }
+}
+
+async function loadSimilarListings() {
+    try {
+        const response = await fetch(`/api/listings/similar/${listingId}`);
+        const listings = await response.json();
+        
+        const container = document.getElementById('similarListings');
+        container.innerHTML = listings.map(listing => `
+            <a href="/marketplace/${listing.id}" class="block border rounded p-2 hover:shadow-md">
+                <img src="${listing.card.image_url}" alt="${listing.card.name}" class="w-full h-32 object-contain mb-2">
+                <p class="font-semibold">${listing.card.name}</p>
+                <p class="text-green-600">${listing.current_price} Credits</p>
+            </a>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading similar listings:', error);
+    }
+}
+
+// Cleanup interval when leaving page
+window.addEventListener('beforeunload', function() {
+    if (updateInterval) {
+        clearInterval(updateInterval);
+    }
+});
+</script>
+{% endblock %}

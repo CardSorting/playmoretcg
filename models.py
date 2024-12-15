@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, event, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, event, Enum, Float, Boolean, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timedelta
 import enum
 import firebase_admin
 from firebase_admin import auth
@@ -16,6 +16,63 @@ class Rarity(enum.Enum):
     RARE = "Rare"
     MYTHIC_RARE = "Mythic Rare"
 
+class ListingStatus(enum.Enum):
+    ACTIVE = "Active"
+    SOLD = "Sold"
+    CANCELLED = "Cancelled"
+    EXPIRED = "Expired"
+
+class ListingType(enum.Enum):
+    FIXED_PRICE = "Fixed Price"
+    AUCTION = "Auction"
+
+class ListingDuration(enum.Enum):
+    ONE_HOUR = "1 Hour"
+    SIX_HOURS = "6 Hours"
+    TWELVE_HOURS = "12 Hours"
+    ONE_DAY = "24 Hours"
+    THREE_DAYS = "3 Days"
+    SEVEN_DAYS = "7 Days"
+
+    @classmethod
+    def get_timedelta(cls, duration):
+        duration_map = {
+            cls.ONE_HOUR: timedelta(hours=1),
+            cls.SIX_HOURS: timedelta(hours=6),
+            cls.TWELVE_HOURS: timedelta(hours=12),
+            cls.ONE_DAY: timedelta(days=1),
+            cls.THREE_DAYS: timedelta(days=3),
+            cls.SEVEN_DAYS: timedelta(days=7)
+        }
+        return duration_map.get(duration)
+
+class Bid(Base):
+    __tablename__ = "bids"
+
+    id = Column(Integer, primary_key=True)
+    listing_id = Column(Integer, ForeignKey('listings.id', ondelete='CASCADE'), nullable=False)
+    bidder_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    amount = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    listing = relationship("Listing", back_populates="bids")
+    bidder = relationship("User", back_populates="bids")
+
+    def to_dict(self):
+        """Convert bid to dictionary."""
+        return {
+            'id': self.id,
+            'listing_id': self.listing_id,
+            'bidder_id': self.bidder_id,
+            'amount': self.amount,
+            'created_at': self.created_at.isoformat(),
+            'bidder': {
+                'id': self.bidder.id,
+                'display_name': self.bidder.display_name
+            } if self.bidder else None
+        }
+
 class User(Base):
     __tablename__ = "users"
 
@@ -28,6 +85,9 @@ class User(Base):
     
     # Relationships
     cards = relationship("Card", back_populates="user", cascade="all, delete-orphan")
+    listings = relationship("Listing", back_populates="seller", foreign_keys="Listing.seller_id")
+    purchases = relationship("Listing", back_populates="buyer", foreign_keys="Listing.buyer_id")
+    bids = relationship("Bid", back_populates="bidder")
     
     @classmethod
     def create_from_firebase(cls, firebase_user):
@@ -72,6 +132,42 @@ class User(Base):
         """Get user's current credit balance."""
         return self.credits
 
+    def place_bid(self, db_session, listing, amount):
+        """Place a bid on an auction listing."""
+        if listing.listing_type != ListingType.AUCTION:
+            raise ValueError("Listing is not an auction")
+            
+        if listing.status != ListingStatus.ACTIVE:
+            raise ValueError("Auction is not active")
+            
+        if listing.is_expired:
+            raise ValueError("Auction has ended")
+            
+        if listing.seller_id == self.id:
+            raise ValueError("Cannot bid on your own auction")
+            
+        if amount <= listing.current_price:
+            raise ValueError(f"Bid must be higher than current price: {listing.current_price}")
+            
+        # Check if user has enough credits
+        if not self.deduct_credits(db_session, amount):
+            raise ValueError("Insufficient credits")
+            
+        # Refund previous bidder if exists
+        if listing.current_bid:
+            previous_bidder = listing.current_bid.bidder
+            previous_bidder.add_credits(db_session, listing.current_bid.amount)
+            
+        # Create new bid
+        bid = Bid(
+            listing_id=listing.id,
+            bidder_id=self.id,
+            amount=amount
+        )
+        db_session.add(bid)
+        db_session.commit()
+        return bid
+
 class CardImage(Base):
     __tablename__ = "card_images"
 
@@ -111,6 +207,7 @@ class Card(Base):
     # Relationships
     user = relationship("User", back_populates="cards")
     images = relationship("CardImage", back_populates="card", cascade="all, delete-orphan")
+    listing = relationship("Listing", back_populates="card", uselist=False)
 
     @property
     def primary_image_url(self):
@@ -145,8 +242,113 @@ class Card(Base):
             'card_number': self.card_number,
             'image_url': self.primary_image_url,
             'created_at': self.created_at.isoformat(),
-            'user_id': self.user_id
+            'user_id': self.user_id,
+            'is_listed': self.listing is not None and self.listing.status == ListingStatus.ACTIVE
         }
+
+class Listing(Base):
+    __tablename__ = "listings"
+
+    id = Column(Integer, primary_key=True)
+    card_id = Column(Integer, ForeignKey('cards.id', ondelete='CASCADE'), nullable=False)
+    seller_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    buyer_id = Column(String, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    listing_type = Column(Enum(ListingType), nullable=False)
+    price = Column(Float, nullable=False)  # Starting price for auctions, fixed price for direct sales
+    status = Column(Enum(ListingStatus), default=ListingStatus.ACTIVE, nullable=False)
+    duration = Column(Enum(ListingDuration), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    sold_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    card = relationship("Card", back_populates="listing")
+    seller = relationship("User", back_populates="listings", foreign_keys=[seller_id])
+    buyer = relationship("User", back_populates="purchases", foreign_keys=[buyer_id])
+    bids = relationship("Bid", back_populates="listing", cascade="all, delete-orphan", order_by="desc(Bid.amount)")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.duration and not self.expires_at:
+            self.expires_at = datetime.utcnow() + ListingDuration.get_timedelta(self.duration)
+
+    @property
+    def is_expired(self):
+        """Check if the listing has expired."""
+        return datetime.utcnow() > self.expires_at
+
+    @property
+    def current_bid(self):
+        """Get the current highest bid."""
+        return self.bids[0] if self.bids else None
+
+    @property
+    def current_price(self):
+        """Get the current price (highest bid for auctions, fixed price for direct sales)."""
+        if self.listing_type == ListingType.AUCTION:
+            return self.current_bid.amount if self.current_bid else self.price
+        return self.price
+
+    def to_dict(self):
+        """Convert listing to dictionary."""
+        return {
+            'id': self.id,
+            'card_id': self.card_id,
+            'seller_id': self.seller_id,
+            'buyer_id': self.buyer_id,
+            'listing_type': self.listing_type.value,
+            'price': self.price,
+            'current_price': self.current_price,
+            'status': self.status.value,
+            'duration': self.duration.value,
+            'created_at': self.created_at.isoformat(),
+            'expires_at': self.expires_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'sold_at': self.sold_at.isoformat() if self.sold_at else None,
+            'time_left': str(self.expires_at - datetime.utcnow()) if self.expires_at > datetime.utcnow() else "Expired",
+            'card': self.card.to_dict() if self.card else None,
+            'seller': {
+                'id': self.seller.id,
+                'display_name': self.seller.display_name
+            } if self.seller else None,
+            'buyer': {
+                'id': self.buyer.id,
+                'display_name': self.buyer.display_name
+            } if self.buyer else None,
+            'bids': [bid.to_dict() for bid in self.bids],
+            'bid_count': len(self.bids)
+        }
+
+    def finalize_auction(self, db_session):
+        """Finalize an auction when it expires."""
+        if self.listing_type != ListingType.AUCTION:
+            raise ValueError("Listing is not an auction")
+            
+        if not self.is_expired:
+            raise ValueError("Auction has not ended yet")
+            
+        if self.status != ListingStatus.ACTIVE:
+            raise ValueError("Auction is not active")
+            
+        winning_bid = self.current_bid
+        if winning_bid:
+            # Update listing status
+            self.status = ListingStatus.SOLD
+            self.buyer_id = winning_bid.bidder_id
+            self.sold_at = datetime.utcnow()
+            
+            # Transfer card ownership
+            self.card.user_id = winning_bid.bidder_id
+            
+            # Transfer credits to seller
+            self.seller.add_credits(db_session, winning_bid.amount)
+        else:
+            # No bids, auction expires
+            self.status = ListingStatus.EXPIRED
+            
+        db_session.commit()
+        return self
 
 # Event listeners
 @event.listens_for(CardImage, 'after_delete')
@@ -212,3 +414,55 @@ def create_card_for_user(db_session, user_id, card_data, image_url=None, filenam
 def get_user_cards(db_session, user_id):
     """Get all cards for a user."""
     return db_session.query(Card).filter_by(user_id=user_id).all()
+
+def create_listing(db_session, card_id: int, seller_id: str, price: float, duration: ListingDuration, listing_type: ListingType = ListingType.FIXED_PRICE) -> Listing:
+    """Create a new listing for a card."""
+    try:
+        # Check if card exists and belongs to seller
+        card = db_session.query(Card).filter_by(id=card_id, user_id=seller_id).first()
+        if not card:
+            raise ValueError("Card not found or doesn't belong to seller")
+            
+        # Check if card is already listed
+        existing_listing = db_session.query(Listing).filter_by(
+            card_id=card_id,
+            status=ListingStatus.ACTIVE
+        ).first()
+        if existing_listing:
+            raise ValueError("Card is already listed")
+            
+        listing = Listing(
+            card_id=card_id,
+            seller_id=seller_id,
+            price=price,
+            duration=duration,
+            listing_type=listing_type
+        )
+        db_session.add(listing)
+        db_session.commit()
+        return listing
+    except Exception as e:
+        print(f"Error creating listing: {e}")
+        db_session.rollback()
+        raise e
+
+def check_expired_listings(db_session):
+    """Check and update expired listings."""
+    try:
+        expired_listings = db_session.query(Listing).filter(
+            Listing.status == ListingStatus.ACTIVE,
+            Listing.expires_at <= datetime.utcnow()
+        ).all()
+        
+        for listing in expired_listings:
+            if listing.listing_type == ListingType.AUCTION:
+                listing.finalize_auction(db_session)
+            else:
+                listing.status = ListingStatus.EXPIRED
+            
+        db_session.commit()
+        return expired_listings
+    except Exception as e:
+        print(f"Error checking expired listings: {e}")
+        db_session.rollback()
+        raise e

@@ -16,6 +16,7 @@ from firebase_admin import auth
 import card_generator
 import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
+from models import ListingType, ListingDuration
 
 # Configure logging
 logging.basicConfig(
@@ -90,6 +91,179 @@ def get_template_context(request: Request) -> Dict[str, Any]:
         "firebase_config": FIREBASE_CONFIG
     }
 
+# Marketplace Routes
+@app.get("/marketplace", response_class=HTMLResponse)
+async def marketplace(
+    request: Request,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Marketplace main page."""
+    if not user_id:
+        return RedirectResponse(url="/sign-in")
+    
+    return templates.TemplateResponse(
+        "marketplace/marketplace.html",
+        get_template_context(request)
+    )
+
+@app.get("/marketplace/{listing_id}", response_class=HTMLResponse)
+async def view_listing(
+    request: Request,
+    listing_id: str,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """View a specific listing."""
+    if not user_id:
+        return RedirectResponse(url="/sign-in")
+    
+    listing = firestore_db.get_listing(listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    context = get_template_context(request)
+    context["listing"] = listing
+    return templates.TemplateResponse("marketplace/listing.html", context)
+
+# Marketplace API Endpoints
+@app.get("/api/cards/user")
+async def get_user_cards(user_id: str = Depends(get_current_user)):
+    """Get user's cards that can be listed."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        cards = firestore_db.get_user_cards(user_id)
+        # Filter out cards that are already listed
+        return [card for card in cards if not card.get('is_listed', False)]
+    except Exception as e:
+        logger.error(f"Error getting user cards: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user cards")
+
+@app.get("/api/listings")
+async def get_listings(
+    type: Optional[str] = None,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Get active listings with optional type filter."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        return firestore_db.get_active_listings(listing_type=type)
+    except Exception as e:
+        logger.error(f"Error getting listings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get listings")
+
+@app.get("/api/listings/{listing_id}")
+async def get_listing_details(
+    listing_id: str,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Get detailed listing information."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    listing = firestore_db.get_listing(listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    return listing
+
+@app.get("/api/listings/similar/{listing_id}")
+async def get_similar_listings(
+    listing_id: str,
+    user_id: Optional[str] = Depends(get_current_user)
+):
+    """Get similar listings based on card rarity and type."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        listing = firestore_db.get_listing(listing_id)
+        if not listing:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        
+        # Get active listings of same rarity and type
+        listings = firestore_db.get_active_listings()
+        similar = [l for l in listings if (
+            l['id'] != listing_id and
+            l['card']['rarity'] == listing['card']['rarity'] and
+            l['card']['type'] == listing['card']['type']
+        )]
+        
+        return similar[:4]  # Return up to 4 similar listings
+    except Exception as e:
+        logger.error(f"Error getting similar listings: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get similar listings")
+
+@app.post("/api/listings")
+async def create_listing(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Create a new listing."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        data = await request.json()
+        listing = firestore_db.create_listing(
+            card_id=data['card_id'],
+            seller_id=user_id,
+            price=float(data['price']),
+            duration=data['duration'],
+            listing_type=data['listing_type']
+        )
+        return listing
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating listing: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create listing")
+
+@app.post("/api/listings/{listing_id}/bid")
+async def place_bid(
+    listing_id: str,
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Place a bid on an auction listing."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        data = await request.json()
+        bid = firestore_db.create_bid(
+            listing_id=listing_id,
+            bidder_id=user_id,
+            amount=float(data['amount'])
+        )
+        return bid
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error placing bid: {e}")
+        raise HTTPException(status_code=500, detail="Failed to place bid")
+
+@app.post("/api/listings/{listing_id}/purchase")
+async def purchase_listing(
+    listing_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Purchase a fixed-price listing."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        listing = firestore_db.purchase_listing(listing_id, user_id)
+        return listing
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error purchasing listing: {e}")
+        raise HTTPException(status_code=500, detail="Failed to purchase listing")
+
+# Existing routes...
 @app.get("/create", response_class=HTMLResponse)
 async def create_card_form(
     request: Request,

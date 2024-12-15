@@ -23,5 +23,111 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == request.resource.data.user_id;
       allow delete: if request.auth != null && request.auth.uid == resource.data.user_id;
     }
+
+    // Marketplace listings
+    match /listings/{listingId} {
+      // Helper functions for listing validation
+      function isValidListingDuration(listingDuration) {
+        return listingDuration in ['1 Hour', '6 Hours', '12 Hours', '24 Hours', '3 Days', '7 Days'];
+      }
+      
+      function isValidExpirationTime(expires_at) {
+        return expires_at is timestamp && expires_at > request.time;
+      }
+      
+      function isExpired() {
+        return resource.data.expires_at < request.time;
+      }
+      
+      function isValidListingType(listingType) {
+        return listingType in ['Fixed Price', 'Auction'];
+      }
+      
+      function isValidPrice(price, listingType) {
+        return price is number && price > 0 && (
+          listingType == 'Fixed Price' || 
+          (listingType == 'Auction' && price >= 1) // Minimum starting bid
+        );
+      }
+      
+      // Anyone can read listings
+      allow read: if true;
+      
+      // Only card owner can create listing with valid parameters
+      allow create: if request.auth != null && 
+                      exists(/databases/$(database)/documents/cards/$(request.resource.data.card_id)) &&
+                      get(/databases/$(database)/documents/cards/$(request.resource.data.card_id)).data.user_id == request.auth.uid &&
+                      request.resource.data.seller_id == request.auth.uid &&
+                      request.resource.data.status == 'Active' &&
+                      isValidListingType(request.resource.data.listing_type) &&
+                      isValidPrice(request.resource.data.price, request.resource.data.listing_type) &&
+                      isValidListingDuration(request.resource.data.duration) &&
+                      isValidExpirationTime(request.resource.data.expires_at);
+      
+      // Allow updates based on listing status and type
+      allow update: if request.auth != null &&
+                      (
+                        // Seller can cancel their active listing
+                        (resource.data.seller_id == request.auth.uid &&
+                         resource.data.status == 'Active' &&
+                         !isExpired() &&
+                         request.resource.data.status == 'Cancelled') ||
+                        
+                        // Buyer can purchase active fixed-price listing
+                        (resource.data.listing_type == 'Fixed Price' &&
+                         resource.data.status == 'Active' &&
+                         !isExpired() &&
+                         request.resource.data.status == 'Sold' &&
+                         request.resource.data.buyer_id == request.auth.uid) ||
+                         
+                        // System can mark expired listings
+                        (resource.data.status == 'Active' &&
+                         isExpired() &&
+                         request.resource.data.status == 'Expired') ||
+                         
+                        // System can update auction current price and bid count
+                        (resource.data.listing_type == 'Auction' &&
+                         resource.data.status == 'Active' &&
+                         !isExpired() &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['current_price', 'bid_count', 'updated_at']))
+                      ) &&
+                      // Prevent modification of critical fields
+                      request.resource.data.duration == resource.data.duration &&
+                      request.resource.data.expires_at == resource.data.expires_at &&
+                      request.resource.data.seller_id == resource.data.seller_id &&
+                      request.resource.data.card_id == resource.data.card_id &&
+                      request.resource.data.listing_type == resource.data.listing_type &&
+                      (resource.data.listing_type == 'Auction' || request.resource.data.price == resource.data.price);
+      
+      // Only seller can delete their active, non-expired listing
+      allow delete: if request.auth != null && 
+                      resource.data.seller_id == request.auth.uid &&
+                      resource.data.status == 'Active' &&
+                      !isExpired();
+    }
+
+    // Bids
+    match /bids/{bidId} {
+      function isValidBid(listingId, amount) {
+        let listing = get(/databases/$(database)/documents/listings/$(listingId)).data;
+        return listing.listing_type == 'Auction' &&
+               listing.status == 'Active' &&
+               listing.expires_at > request.time &&
+               amount > listing.current_price;
+      }
+      
+      // Anyone can read bids
+      allow read: if true;
+      
+      // Only authenticated users can create valid bids
+      allow create: if request.auth != null &&
+                      request.auth.uid == request.resource.data.bidder_id &&
+                      exists(/databases/$(database)/documents/listings/$(request.resource.data.listing_id)) &&
+                      get(/databases/$(database)/documents/listings/$(request.resource.data.listing_id)).data.seller_id != request.auth.uid &&
+                      isValidBid(request.resource.data.listing_id, request.resource.data.amount);
+      
+      // Bids cannot be updated or deleted
+      allow update, delete: if false;
+    }
   }
 }
