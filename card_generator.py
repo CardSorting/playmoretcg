@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_SET_NAME = 'GEN'
 CARD_NUMBER_LIMIT = 999
 BASE_RARITY_PROBABILITIES = {
-    Rarity.COMMON: 0.60,
-    Rarity.UNCOMMON: 0.30,
-    Rarity.RARE: 0.08,
-    Rarity.MYTHIC_RARE: 0.02
+    Rarity.COMMON: 0.75,      # Increased from 0.60
+    Rarity.UNCOMMON: 0.20,    # Decreased from 0.30
+    Rarity.RARE: 0.04,        # Decreased from 0.08
+    Rarity.MYTHIC_RARE: 0.01  # Decreased from 0.02
 }
 
 # Color combinations
@@ -39,47 +39,27 @@ SHARD_COLORS = [
     ('Red', 'Green', 'White'), ('Green', 'White', 'Blue')
 ]
 
-# Seasonal themes
-SEASONAL_THEMES = {
-    'spring': {
-        'creatures': ['Druid', 'Elf', 'Beast', 'Bird', 'Unicorn'],
-        'keywords': ['Growth', 'Bloom', 'Flourish', 'Renew'],
-        'colors': ['Green', 'White']
+# Common MTG themes by color
+COLOR_THEMES = {
+    'White': {
+        'creatures': ['Angel', 'Knight', 'Soldier', 'Cleric', 'Bird', 'Cat', 'Unicorn', 'Griffin', 'Pegasus', 'Human'],
+        'keywords': ['Vigilance', 'Protection', 'Lifelink', 'First Strike', 'Flying', 'Exile', 'Shield', 'Unity', 'Divine', 'Order']
     },
-    'summer': {
-        'creatures': ['Phoenix', 'Dragon', 'Elemental', 'Warrior', 'Djinn'],
-        'keywords': ['Blaze', 'Fury', 'Scorch', 'Ignite'],
-        'colors': ['Red', 'Green']
+    'Blue': {
+        'creatures': ['Wizard', 'Merfolk', 'Sphinx', 'Drake', 'Illusion', 'Serpent', 'Leviathan', 'Djinn', 'Shapeshifter', 'Elemental'],
+        'keywords': ['Flying', 'Scry', 'Counter', 'Bounce', 'Draw', 'Control', 'Knowledge', 'Mind', 'Illusion', 'Manipulation']
     },
-    'fall': {
-        'creatures': ['Vampire', 'Zombie', 'Wraith', 'Skeleton', 'Spirit'],
-        'keywords': ['Decay', 'Wither', 'Harvest', 'Haunt'],
-        'colors': ['Black', 'Red']
+    'Black': {
+        'creatures': ['Zombie', 'Vampire', 'Demon', 'Horror', 'Skeleton', 'Wraith', 'Shade', 'Specter', 'Rat', 'Nightmare'],
+        'keywords': ['Deathtouch', 'Lifelink', 'Sacrifice', 'Destroy', 'Drain', 'Corrupt', 'Death', 'Decay', 'Dark', 'Torment']
     },
-    'winter': {
-        'creatures': ['Wizard', 'Giant', 'Golem', 'Wolf', 'Construct'],
-        'keywords': ['Frost', 'Chill', 'Hibernate', 'Freeze'],
-        'colors': ['Blue', 'White']
-    }
-}
-
-# Time of day themes
-TIME_THEMES = {
-    'morning': {
-        'keywords': ['Dawn', 'Awaken', 'Rise', 'Illuminate'],
-        'colors': ['White', 'Green']
+    'Red': {
+        'creatures': ['Dragon', 'Goblin', 'Warrior', 'Phoenix', 'Elemental', 'Ogre', 'Devil', 'Giant', 'Shaman', 'Berserker'],
+        'keywords': ['Haste', 'First Strike', 'Direct Damage', 'Trample', 'Fury', 'Rage', 'Burn', 'Chaos', 'Lightning', 'Fire']
     },
-    'afternoon': {
-        'keywords': ['Zenith', 'Radiate', 'Shine', 'Flourish'],
-        'colors': ['Red', 'White']
-    },
-    'evening': {
-        'keywords': ['Dusk', 'Twilight', 'Fade', 'Wane'],
-        'colors': ['Blue', 'Black']
-    },
-    'night': {
-        'keywords': ['Dark', 'Shadow', 'Moon', 'Dream'],
-        'colors': ['Black', 'Blue']
+    'Green': {
+        'creatures': ['Beast', 'Elf', 'Druid', 'Wurm', 'Hydra', 'Treefolk', 'Spider', 'Wolf', 'Bear', 'Dinosaur'],
+        'keywords': ['Trample', 'Reach', 'Fight', 'Growth', 'Ramp', 'Natural', 'Wild', 'Primal', 'Forest', 'Strength']
     }
 }
 
@@ -115,37 +95,13 @@ TYPE_WEIGHTS = {
     }
 }
 
-# Color combination weights by rarity
+# Color weights by rarity
 COLOR_WEIGHTS = {
-    Rarity.COMMON: {'mono': 0.8, 'guild': 0.2},
-    Rarity.UNCOMMON: {'mono': 0.6, 'guild': 0.4},
-    Rarity.RARE: {'mono': 0.4, 'guild': 0.5, 'shard': 0.1},
-    Rarity.MYTHIC_RARE: {'mono': 0.2, 'guild': 0.5, 'shard': 0.3}
+    Rarity.COMMON: {'mono': 1.0},
+    Rarity.UNCOMMON: {'mono': 0.8, 'guild': 0.2},
+    Rarity.RARE: {'mono': 0.6, 'guild': 0.3, 'shard': 0.1},
+    Rarity.MYTHIC_RARE: {'mono': 0.4, 'guild': 0.4, 'shard': 0.2}
 }
-
-def get_current_season() -> str:
-    """Determine the current season based on the month."""
-    month = datetime.now().month
-    if 3 <= month <= 5:
-        return 'spring'
-    elif 6 <= month <= 8:
-        return 'summer'
-    elif 9 <= month <= 11:
-        return 'fall'
-    else:
-        return 'winter'
-
-def get_time_of_day() -> str:
-    """Determine the time of day."""
-    hour = datetime.now().hour
-    if 5 <= hour < 12:
-        return 'morning'
-    elif 12 <= hour < 17:
-        return 'afternoon'
-    elif 17 <= hour < 22:
-        return 'evening'
-    else:
-        return 'night'
 
 def get_color_combination(rarity: Rarity) -> List[str]:
     """Get a color combination based on rarity weights."""
@@ -170,24 +126,29 @@ def get_card_type(rarity: Rarity) -> str:
         weights=list(weights.values())
     )[0]
 
-def get_themed_elements() -> Dict[str, Any]:
-    """Get themed elements based on current season and time."""
-    season = get_current_season()
-    time_of_day = get_time_of_day()
+def get_themed_elements(colors: List[str]) -> Dict[str, Any]:
+    """Get themed elements based on card colors."""
+    creatures = []
+    keywords = []
     
-    elements = {
-        'creatures': SEASONAL_THEMES[season]['creatures'],
-        'keywords': (
-            SEASONAL_THEMES[season]['keywords'] +
-            TIME_THEMES[time_of_day]['keywords']
-        ),
-        'colors': list(set(
-            SEASONAL_THEMES[season]['colors'] +
-            TIME_THEMES[time_of_day]['colors']
-        ))
+    # Gather themes from each color
+    for color in colors:
+        color_creatures = COLOR_THEMES[color]['creatures']
+        color_keywords = COLOR_THEMES[color]['keywords']
+        
+        # Add 2-3 random creatures and keywords from each color
+        creatures.extend(random.sample(color_creatures, min(random.randint(2, 3), len(color_creatures))))
+        keywords.extend(random.sample(color_keywords, min(random.randint(2, 3), len(color_keywords))))
+    
+    # Remove duplicates while preserving order
+    creatures = list(dict.fromkeys(creatures))
+    keywords = list(dict.fromkeys(keywords))
+    
+    return {
+        'creatures': creatures,
+        'keywords': keywords,
+        'colors': colors
     }
-    
-    return elements
 
 def generate_card_prompt(rarity: str = None) -> str:
     """Generate the GPT prompt for creating the card."""
@@ -198,30 +159,35 @@ def generate_card_prompt(rarity: str = None) -> str:
         rarity_prompt = rarity
         rarity_enum = Rarity[rarity.upper().replace(' ', '_')]
     
-    # Get themed elements
-    themes = get_themed_elements()
-    
-    # Get card type if rarity is specified
+    # Get card type and color combination if rarity is specified
     card_type = get_card_type(rarity_enum) if rarity else "any appropriate type"
-    
-    # Get color combination if rarity is specified
-    colors = get_color_combination(rarity_enum) if rarity else themes['colors']
+    colors = get_color_combination(rarity_enum) if rarity else [random.choice(MONO_COLORS)]
     color_str = '/'.join(colors)
+    
+    # Get themed elements based on colors
+    themes = get_themed_elements(colors)
+    
+    # Simple mana cost guidance
+    mana_cost_guidance = ""
+    if rarity:
+        color_symbols = ''.join(f"{{{c[0]}}}" for c in colors)  # First letter of each color
+        mana_cost_guidance = f"Use {' and '.join(colors)} mana symbols with optional generic mana. "
+        mana_cost_guidance += f"Example: {'{2}' + color_symbols} for a 4-cost card."
     
     # Build the prompt
     prompt = (
         f"Create a unique Magic: The Gathering card with these attributes:\n"
-        f"- Name: A creative, thematic name incorporating seasonal or time-of-day elements\n"
-        f"- ManaCost: Using curly braces (e.g., " + "{2}" + f"{color_str[0]}" + "), appropriate for the card's power level\n"
+        f"- Name: A creative, thematic name incorporating elements of {', '.join(themes['creatures'])}.\n"
+        f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Use appropriate mana cost with curly braces for each symbol.'}\n"
         f"- Type: {card_type}\n"
         f"- Color: {color_str}\n"
-        "- Abilities: Create synergistic abilities that:\n"
-        f"  * Use these themed keywords: {', '.join(random.sample(themes['keywords'], 2))}\n"
+        "- Abilities: Create 2-3 synergistic abilities that:\n"
+        f"  * Use these themed keywords: {', '.join(random.sample(themes['keywords'], min(2, len(themes['keywords']))))}\n"
         "  * Match the card's colors and rarity\n"
-        "  * Create interesting gameplay interactions\n"
-        "- PowerToughness: For creatures, balanced for the mana cost\n"
-        "- FlavorText: A thematic quote or description that fits the current "
-        f"{get_current_season()} season and {get_time_of_day()} time of day\n"
+        "  * Create interesting and unique gameplay interactions\n"
+        "  * Include a mix of static, activated, and triggered abilities\n"
+        "- PowerToughness: For creatures, balance the power and toughness with the mana cost and abilities.\n"
+        f"- FlavorText: Write a short, evocative flavor text that reflects the card's theme and color identity.\n"
         f"- Rarity: {rarity_prompt}\n"
         "Return the response as a JSON object."
     )
@@ -242,26 +208,70 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
         'Abilities': 'abilities',
         'FlavorText': 'flavorText',
         'Rarity': 'rarity',
-        'PowerToughness': 'powerToughness'
+        'PowerToughness': 'powerToughness',
+        'Power': 'power',
+        'Toughness': 'toughness'
     }
 
     # Transfer uppercase values to lowercase fields if present
     for old_key, new_key in mapping.items():
         if old_key in card_data:
             card_data[new_key] = card_data.pop(old_key)
-
+    
+    # Format abilities
+    if 'abilities' in card_data:
+        abilities = card_data['abilities']
+        
+        # Convert string to list if needed
+        if isinstance(abilities, str):
+            try:
+                # Try to parse as JSON if it's a string representation of JSON
+                abilities = json.loads(abilities)
+            except json.JSONDecodeError:
+                # If not JSON, split by newlines and filter empty lines
+                abilities = [line.strip() for line in abilities.splitlines() if line.strip()]
+        
+        # Ensure abilities is a list
+        if not isinstance(abilities, list):
+            abilities = [str(abilities)]
+        
+        # Format each ability
+        formatted_abilities = []
+        for ability in abilities:
+            if isinstance(ability, dict):
+                desc = ability.get('Description', '')
+                if ability.get('Type') == 'Activated' and ability.get('Cost'):
+                    desc = f"{ability['Cost']}: {desc}"
+                formatted_abilities.append(desc)
+            else:
+                formatted_abilities.append(str(ability))
+        
+        # Join abilities with line breaks
+        card_data['abilities'] = '<br>'.join(formatted_abilities)
+    
+    # Handle power/toughness
+    if 'type' in card_data and 'Creature' in card_data['type']:
+        power = card_data.get('power', card_data.get('Power', '0'))
+        toughness = card_data.get('toughness', card_data.get('Toughness', '0'))
+        card_data['powerToughness'] = f"{power}/{toughness}"
+    else:
+        card_data['powerToughness'] = ''
+    
     # Validate required fields
     required_fields = ['name', 'manaCost', 'type', 'color', 'abilities', 'flavorText', 'rarity']
     for field in required_fields:
         if field not in card_data or not card_data[field]:
             card_data[field] = get_default_value_for_field(field)
 
-    # Convert rarity string to enum
-    if isinstance(card_data['rarity'], str):
-        card_data['rarity'] = Rarity[card_data['rarity'].upper().replace(' ', '_')]
+    # Convert rarity string to enum if it's a string
+    if isinstance(card_data.get('rarity'), str):
+        try:
+            card_data['rarity'] = Rarity[card_data['rarity'].upper().replace(' ', '_')]
+        except KeyError:
+            card_data['rarity'] = Rarity.COMMON
 
     # Convert rarity enum to string value for Firestore
-    if isinstance(card_data['rarity'], Rarity):
+    if isinstance(card_data.get('rarity'), Rarity):
         card_data['rarity'] = card_data['rarity'].value
 
 def get_default_value_for_field(field: str) -> Any:
@@ -278,123 +288,218 @@ def get_default_value_for_field(field: str) -> Any:
     }
     return default_values.get(field, 'Unknown')
 
-def get_next_set_name_and_number() -> Tuple[str, int]:
-    """Get the next set name and card number."""
-    return DEFAULT_SET_NAME, random.randint(1, CARD_NUMBER_LIMIT)
+def get_next_set_name_and_number() -> Tuple[str, int, int]:
+    """Get the next set name, set number, and card number."""
+    set_number = random.randint(1, 10)
+    return DEFAULT_SET_NAME, set_number, random.randint(1, CARD_NUMBER_LIMIT)
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(3))
+def validate_card_data(card_data: Dict[str, Any]) -> bool:
+    """Validate the generated card data meets requirements."""
+    required_fields = ['name', 'manaCost', 'type', 'color', 'abilities', 'flavorText', 'rarity']
+    
+    # Check all required fields are present and non-empty
+    for field in required_fields:
+        if not card_data.get(field):
+            logger.error(f"Missing or empty required field: {field}")
+            return False
+    
+    # Validate mana cost format (should contain curly braces)
+    if not ('{' in card_data['manaCost'] and '}' in card_data['manaCost']):
+        logger.error("Invalid mana cost format")
+        return False
+    
+    # Validate card type
+    if not any(type_word in card_data['type'] for type_word in
+               ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker']):
+        logger.error("Invalid card type")
+        return False
+    
+    # Validate color
+    if not isinstance(card_data.get('color'), (str, list)):
+        logger.error("Invalid color format")
+        return False
+    
+    return True
+
+def get_rarity(set_number: int, card_number: int) -> Rarity:
+    """Determine card rarity based on set and card number."""
+    # Base probabilities
+    probabilities = BASE_RARITY_PROBABILITIES.copy()
+
+    # Adjust probabilities based on set number
+    if set_number % 3 == 0:  # Sets divisible by 3 have slightly higher chance of rare/mythic
+        probabilities[Rarity.RARE] += 0.02
+        probabilities[Rarity.MYTHIC_RARE] += 0.01
+        probabilities[Rarity.COMMON] -= 0.02
+        probabilities[Rarity.UNCOMMON] -= 0.01
+    elif set_number % 2 == 0: # Sets divisible by 2 have slightly higher chance of uncommon
+        probabilities[Rarity.UNCOMMON] += 0.02
+        probabilities[Rarity.COMMON] -= 0.02
+
+    # Adjust probabilities based on card number
+    if card_number % 100 == 0: # Every 100th card is more likely to be mythic
+        probabilities[Rarity.MYTHIC_RARE] += 0.03
+        probabilities[Rarity.RARE] -= 0.01
+        probabilities[Rarity.COMMON] -= 0.02
+    elif card_number % 10 == 0: # Every 10th card is more likely to be rare
+        probabilities[Rarity.RARE] += 0.02
+        probabilities[Rarity.COMMON] -= 0.02
+
+    # Normalize probabilities
+    total = sum(probabilities.values())
+    normalized_probabilities = {k: v / total for k, v in probabilities.items()}
+
+    # Choose rarity based on normalized probabilities
+    rarity = random.choices(
+        list(normalized_probabilities.keys()),
+        weights=list(normalized_probabilities.values())
+    )[0]
+    return rarity
+
+@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
 def generate_card(rarity: str = None) -> Dict[str, Any]:
     """Generate a card with optional rarity."""
     prompt = generate_card_prompt(rarity)
+    max_attempts = 3
+    
+    for attempt in range(max_attempts):
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=400,
+                temperature=0.8
+            )
+            
+            card_data_str = response.choices[0].message.content
+            logger.debug(f"Raw card data from GPT (attempt {attempt + 1}): {card_data_str}")
+            
+            try:
+                card_data = json.loads(card_data_str)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON response: {e}")
+                if attempt < max_attempts - 1:
+                    continue
+                raise ValueError("Failed to generate valid card data after multiple attempts")
+            
+            standardize_card_data(card_data)
+            
+            if not validate_card_data(card_data):
+                if attempt < max_attempts - 1:
+                    logger.warning(f"Invalid card data on attempt {attempt + 1}, retrying...")
+                    continue
+                raise ValueError("Failed to generate valid card data after multiple attempts")
+            
+            set_name, set_number, card_number = get_next_set_name_and_number()
+            
+            if not rarity:
+                card_rarity = get_rarity(set_number, card_number)
+                card_data['rarity'] = card_rarity.value
+            
+            card_data['set_name'] = set_name
+            card_data['card_number'] = card_number
+            
+            return card_data
+            
+        except Exception as e:
+            logger.error(f"Error generating card (attempt {attempt + 1}): {e}")
+            if attempt < max_attempts - 1:
+                continue
+            raise ValueError(f"Failed to generate card after {max_attempts} attempts: {str(e)}")
 
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=300
-        )
-        card_data_str = response.choices[0].message.content
-        logger.debug(f"Raw card data from GPT: {card_data_str}")
-        card_data = json.loads(card_data_str)
-
-        standardize_card_data(card_data)
-        set_name, card_number = get_next_set_name_and_number()
-        card_data['set_name'] = set_name
-        card_data['card_number'] = card_number
-
-        return card_data
-
-    except Exception as e:
-        logger.error(f"Error generating card: {e}")
-        return generate_fallback_card(rarity)
-
-def generate_fallback_card(rarity: str) -> Dict[str, Any]:
-    """Generate a basic fallback card when GPT response is invalid."""
-    rarity_enum = Rarity.COMMON if not rarity else Rarity[rarity.upper().replace(' ', '_')]
-    return {
-        'name': 'Default Card',
-        'manaCost': '{0}',
-        'type': 'Basic Creature - Placeholder',
-        'color': 'Colorless',
-        'abilities': 'None',
-        'flavorText': 'Default fallback card.',
-        'rarity': rarity_enum.value,
-        'set_name': DEFAULT_SET_NAME,
-        'card_number': 1
-    }
-
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(3))
+@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
 def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
     """Generate artwork for the card using OpenAI's image generation API."""
     prompt = generate_image_prompt(card_data)
+    max_attempts = 3
 
-    try:
-        response = openai_client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1024",
-            quality="standard",
-            n=1
-        )
-        
-        image_url = response.data[0].url
-        
-        # Download image from OpenAI
-        response = requests.get(image_url)
-        if response.status_code != 200:
-            raise ValueError(f"Failed to download image: Status {response.status_code}")
-        
-        # Prepare image data for upload
-        image_data = response.content
-        filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
-        
-        # Upload to Backblaze
-        b2_url = upload_image(image_data, filename)
-        
-        return image_url, b2_url
+    for attempt in range(max_attempts):
+        try:
+            # Generate image with DALL-E
+            response = openai_client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
+                quality="standard",
+                n=1
+            )
+            
+            image_url = response.data[0].url
+            
+            # Download image from OpenAI with timeout and retries
+            download_attempts = 3
+            for dl_attempt in range(download_attempts):
+                try:
+                    response = requests.get(image_url, timeout=30)
+                    if response.status_code == 200:
+                        break
+                    logger.warning(f"Failed to download image (attempt {dl_attempt + 1}): Status {response.status_code}")
+                    if dl_attempt == download_attempts - 1:
+                        raise ValueError(f"Failed to download image after {download_attempts} attempts")
+                except requests.RequestException as e:
+                    if dl_attempt == download_attempts - 1:
+                        raise
+                    logger.warning(f"Download attempt {dl_attempt + 1} failed: {e}")
+            
+            # Prepare image data for upload
+            image_data = response.content
+            if not image_data:
+                raise ValueError("Downloaded image data is empty")
+                
+            filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+            
+            # Upload to Backblaze with validation
+            try:
+                b2_url = upload_image(image_data, filename)
+                if not b2_url:
+                    raise ValueError("Failed to get valid URL from Backblaze upload")
+                return image_url, b2_url
+            except Exception as e:
+                logger.error(f"Backblaze upload error: {e}")
+                if attempt < max_attempts - 1:
+                    continue
+                raise
 
-    except Exception as e:
-        logger.error(f"Error generating card image: {e}")
-        raise ValueError(f"Failed to generate card image: {e}")
+        except Exception as e:
+            logger.error(f"Error generating card image (attempt {attempt + 1}): {e}")
+            if attempt < max_attempts - 1:
+                continue
+            raise ValueError(f"Failed to generate and store card image after {max_attempts} attempts: {str(e)}")
 
 def generate_image_prompt(card_data: Dict[str, Any]) -> str:
     """Generate an image generation prompt based on card type and attributes."""
-    themes = get_themed_elements()
-    season = get_current_season()
-    time_of_day = get_time_of_day()
-    
-    prompt = f"Create fantasy artwork for {card_data.get('name')}. "
-    
-    # Add seasonal and time of day atmosphere
-    prompt += f"Set in a {season} {time_of_day} atmosphere. "
-    
     card_type = card_data.get('type', 'Unknown')
+    card_name = card_data.get('name', '')
+    color_identity = card_data.get('color', '')
+    
+    prompt = f"Create fantasy artwork for a Magic: The Gathering card named {card_name}. "
+    
+    # Add color identity atmosphere
+    if isinstance(color_identity, list):
+        color_str = '/'.join(color_identity)
+    else:
+        color_str = color_identity
+    prompt += f"Use a {color_str} color scheme. "
+    
+    # Add type-specific details
     if 'Creature' in card_type:
-        if any(creature in card_type for creature in themes['creatures']):
-            prompt += f"Show a majestic {card_type.lower()} in action. "
-        else:
-            prompt += f"Show a {card_type.lower()} in action. "
+        prompt += f"Show a majestic {card_type.lower()} in a dynamic pose. "
     elif 'Enchantment' in card_type:
-        prompt += f"Depict a magical aura or mystical effect with {season} elements. "
+        prompt += "Depict a mystical magical effect or aura. "
     elif 'Artifact' in card_type:
         prompt += "Illustrate a detailed magical item or relic. "
     elif 'Land' in card_type:
-        prompt += f"Illustrate a {season} landscape during {time_of_day}. "
+        prompt += f"Illustrate a {color_str} themed landscape. "
     elif 'Planeswalker' in card_type:
-        prompt += f"Show a powerful {card_type.lower()} character in a {season} setting. "
+        prompt += "Show a powerful planeswalker character in an epic scene. "
     else:
-        prompt += "Depict the card's effect in a visually appealing way. "
-
-    # Handle rarity being either string or enum
-    rarity = card_data['rarity']
-    if isinstance(rarity, Rarity):
-        rarity = rarity.value
-
-    # Add color and rarity-specific elements
-    prompt += f"Use the {card_data['color']} color scheme with {rarity.lower()} quality. "
+        prompt += "Depict the card's magical effect in a visually striking way. "
     
-    # Add final quality instructions
+    # Add quality instructions
     prompt += "High detail, dramatic lighting, no text or borders. "
-    prompt += f"Incorporate {season} and {time_of_day} lighting effects."
-
+    prompt += "Professional fantasy art style similar to official Magic: The Gathering artwork."
+    
     return prompt

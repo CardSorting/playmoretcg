@@ -45,14 +45,14 @@
 
             <!-- Card Text: Abilities and Flavor Text -->
             <div class="card-text bg-gray-100 bg-opacity-90 p-3 rounded flex-grow overflow-y-auto text-sm leading-relaxed">
-                <p class="abilities-text mb-2">{{ card.abilities }}</p>
+                <p class="abilities-text mb-2">{{ card.abilities|safe }}</p>
                 <p class="flavor-text mt-2 italic">{{ card.flavorText }}</p>
             </div>
 
             <!-- Footer: Rarity and Power/Toughness -->
             <div class="card-footer flex justify-between items-center text-white text-xs mt-1 bg-black bg-opacity-50 p-2 rounded-b-md">
                 <span class="rarity-details">{{ card.rarity }} ({{ card.set_name }}-{{ card.card_number }})</span>
-                <span class="power-toughness">{{ card.powerToughness or 'N/A' }}</span>
+                <span class="power-toughness">{{ card.powerToughness }}</span>
             </div>
         </div>
     </div>
