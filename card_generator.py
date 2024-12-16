@@ -500,7 +500,7 @@ def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
         f"Create ONLY the main character in {color_str} colors, centered in frame. "
         "Use a completely plain white background. "
         "NO background elements, NO patterns, NO decorative effects - ONLY the character. "
-        "Style: Detailed digital painting like a 3D model render. "
+        "Style: Detailed digital art like a 3D model render. "
         "Think character turnaround reference art."
     )
     max_attempts = 3
@@ -592,7 +592,7 @@ def create_dalle_prompt(card_data: Dict[str, Any]) -> str:
             "Focus on the character's distinctive features and anatomy. "
             "The character must be the ONLY element - NO background elements, "
             "NO special effects, NO decorative elements, NO patterns. "
-            "Style: High-detail digital painting like a character concept art piece. "
+            "Style: High-detail digital artlike a character concept art piece. "
             "Think professional fantasy character art on a pure white studio backdrop."
         )
     else:
