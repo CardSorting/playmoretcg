@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_SET_NAME = 'GEN'
 CARD_NUMBER_LIMIT = 999
 BASE_RARITY_PROBABILITIES = {
-    Rarity.COMMON: 0.75,      # Increased from 0.60
-    Rarity.UNCOMMON: 0.20,    # Decreased from 0.30
-    Rarity.RARE: 0.04,        # Decreased from 0.08
-    Rarity.MYTHIC_RARE: 0.01  # Decreased from 0.02
+    Rarity.COMMON: 0.714,     # ~10/14 cards in a booster
+    Rarity.UNCOMMON: 0.214,   # ~3/14 cards in a booster
+    Rarity.RARE: 0.062,       # ~7/8 of rare slots (7/8 * 1/14)
+    Rarity.MYTHIC_RARE: 0.01  # ~1/8 of rare slots (1/8 * 1/14)
 }
 
 # Color combinations
@@ -174,22 +174,22 @@ def generate_card_prompt(rarity: str = None) -> str:
         mana_cost_guidance = f"Use {' and '.join(colors)} mana symbols with optional generic mana. "
         mana_cost_guidance += f"Example: {'{2}' + color_symbols} for a 4-cost card."
     
-    # Build the prompt
+    # Build the prompt with emphasis on concise, focused design
     prompt = (
-        f"Create a unique Magic: The Gathering card with these attributes:\n"
-        f"- Name: A creative, thematic name incorporating elements of {', '.join(themes['creatures'])}.\n"
-        f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Use appropriate mana cost with curly braces for each symbol.'}\n"
+        f"Design a focused Magic: The Gathering card with these specifications:\n"
+        f"- Name: Brief, thematic name (max 40 chars) using elements from {', '.join(themes['creatures'][:2])}.\n"
+        f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Balanced mana cost with curly braces {X}.'}\n"
         f"- Type: {card_type}\n"
         f"- Color: {color_str}\n"
-        "- Abilities: Create 2-3 synergistic abilities that:\n"
-        f"  * Use these themed keywords: {', '.join(random.sample(themes['keywords'], min(2, len(themes['keywords']))))}\n"
-        "  * Match the card's colors and rarity\n"
-        "  * Create interesting and unique gameplay interactions\n"
-        "  * Include a mix of static, activated, and triggered abilities\n"
-        "- PowerToughness: For creatures, balance the power and toughness with the mana cost and abilities.\n"
-        f"- FlavorText: Write a short, evocative flavor text that reflects the card's theme and color identity.\n"
+        "- Abilities: Create 1-3 concise, synergistic abilities that:\n"
+        f"  * Incorporate these keywords: {', '.join(random.sample(themes['keywords'], min(2, len(themes['keywords']))))}\n"
+        "  * Focus on clear, direct effects\n"
+        "  * Each ability should be under 150 characters\n"
+        "  * Prefer established keyword mechanics when possible\n"
+        "- PowerToughness: For creatures, use balanced stats matching the mana cost.\n"
+        f"- FlavorText: One impactful sentence (max 120 chars) capturing the card's essence.\n"
         f"- Rarity: {rarity_prompt}\n"
-        "Return the response as a JSON object."
+        "Return a JSON object with these fields. Keep text concise and focused."
     )
     
     return prompt
@@ -199,7 +199,15 @@ def safe_get_dict(data: Dict[str, Any], key: str, default: Any = None) -> Any:
     return data.get(key, default)
 
 def standardize_card_data(card_data: Dict[str, Any]) -> None:
-    """Standardizes card data fields and ensures all required fields are present."""
+    """Standardizes card data fields and ensures all required fields are present with length validation."""
+    # Character limits for different fields
+    LIMITS = {
+        'name': 40,
+        'abilities': 150,  # per ability
+        'flavorText': 120,
+        'type': 50
+    }
+    
     mapping = {
         'Name': 'name',
         'ManaCost': 'manaCost',
@@ -218,7 +226,7 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
         if old_key in card_data:
             card_data[new_key] = card_data.pop(old_key)
     
-    # Format abilities
+    # Format abilities with length validation
     if 'abilities' in card_data:
         abilities = card_data['abilities']
         
@@ -235,16 +243,28 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
         if not isinstance(abilities, list):
             abilities = [str(abilities)]
         
-        # Format each ability
+        # Format each ability with length limits
         formatted_abilities = []
         for ability in abilities:
             if isinstance(ability, dict):
                 desc = ability.get('Description', '')
                 if ability.get('Type') == 'Activated' and ability.get('Cost'):
                     desc = f"{ability['Cost']}: {desc}"
+                # Truncate description if too long
+                if len(desc) > LIMITS['abilities']:
+                    desc = desc[:LIMITS['abilities']-3] + '...'
                 formatted_abilities.append(desc)
             else:
-                formatted_abilities.append(str(ability))
+                ability_text = str(ability)
+                # Truncate ability text if too long
+                if len(ability_text) > LIMITS['abilities']:
+                    ability_text = ability_text[:LIMITS['abilities']-3] + '...'
+                formatted_abilities.append(ability_text)
+        
+        # Limit total number of abilities
+        if len(formatted_abilities) > 4:
+            formatted_abilities = formatted_abilities[:4]
+            logger.warning(f"Card {card_data.get('name', 'Unknown')} had too many abilities, truncated to 4")
         
         # Join abilities with line breaks
         card_data['abilities'] = '<br>'.join(formatted_abilities)
@@ -294,13 +314,26 @@ def get_next_set_name_and_number() -> Tuple[str, int, int]:
     return DEFAULT_SET_NAME, set_number, random.randint(1, CARD_NUMBER_LIMIT)
 
 def validate_card_data(card_data: Dict[str, Any]) -> bool:
-    """Validate the generated card data meets requirements."""
+    """Validate the generated card data meets requirements and length limits."""
     required_fields = ['name', 'manaCost', 'type', 'color', 'abilities', 'flavorText', 'rarity']
     
-    # Check all required fields are present and non-empty
+    # Length limits for validation
+    LIMITS = {
+        'name': 40,
+        'type': 50,
+        'flavorText': 120,
+        'manaCost': 20
+    }
+    
+    # Check all required fields are present, non-empty, and within length limits
     for field in required_fields:
         if not card_data.get(field):
             logger.error(f"Missing or empty required field: {field}")
+            return False
+        
+        # Check length limits for text fields
+        if field in LIMITS and len(str(card_data[field])) > LIMITS[field]:
+            logger.error(f"Field {field} exceeds length limit of {LIMITS[field]} characters")
             return False
     
     # Validate mana cost format (should contain curly braces)
@@ -309,8 +342,8 @@ def validate_card_data(card_data: Dict[str, Any]) -> bool:
         return False
     
     # Validate card type
-    if not any(type_word in card_data['type'] for type_word in
-               ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker']):
+    valid_types = ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker']
+    if not any(type_word in card_data['type'] for type_word in valid_types):
         logger.error("Invalid card type")
         return False
     
@@ -318,6 +351,17 @@ def validate_card_data(card_data: Dict[str, Any]) -> bool:
     if not isinstance(card_data.get('color'), (str, list)):
         logger.error("Invalid color format")
         return False
+    
+    # Validate abilities format and count
+    if isinstance(card_data['abilities'], str):
+        abilities = card_data['abilities'].split('<br>')
+        if len(abilities) > 4:
+            logger.error("Too many abilities (maximum 4 allowed)")
+            return False
+        for ability in abilities:
+            if len(ability) > 150:  # Max length per ability
+                logger.error("Ability text too long (maximum 150 characters per ability)")
+                return False
     
     return True
 
@@ -328,20 +372,21 @@ def get_rarity(set_number: int, card_number: int) -> Rarity:
 
     # Adjust probabilities based on set number
     if set_number % 3 == 0:  # Sets divisible by 3 have slightly higher chance of rare/mythic
-        probabilities[Rarity.RARE] += 0.02
-        probabilities[Rarity.MYTHIC_RARE] += 0.01
-        probabilities[Rarity.COMMON] -= 0.02
-        probabilities[Rarity.UNCOMMON] -= 0.01
-    elif set_number % 2 == 0: # Sets divisible by 2 have slightly higher chance of uncommon
-        probabilities[Rarity.UNCOMMON] += 0.02
-        probabilities[Rarity.COMMON] -= 0.02
+        probabilities[Rarity.RARE] += 0.01
+        probabilities[Rarity.MYTHIC_RARE] += 0.005
+        probabilities[Rarity.COMMON] -= 0.01
+        probabilities[Rarity.UNCOMMON] -= 0.005
+    elif set_number % 2 == 0:  # Sets divisible by 2 have slightly higher chance of uncommon
+        probabilities[Rarity.UNCOMMON] += 0.01
+        probabilities[Rarity.COMMON] -= 0.01
 
     # Adjust probabilities based on card number
-    if card_number % 100 == 0: # Every 100th card is more likely to be mythic
-        probabilities[Rarity.MYTHIC_RARE] += 0.03
-        probabilities[Rarity.RARE] -= 0.01
+    if card_number % 100 == 0:  # Every 100th card is more likely to be mythic
+        probabilities[Rarity.MYTHIC_RARE] += 0.02
+        probabilities[Rarity.RARE] += 0.01
         probabilities[Rarity.COMMON] -= 0.02
-    elif card_number % 10 == 0: # Every 10th card is more likely to be rare
+        probabilities[Rarity.UNCOMMON] -= 0.01
+    elif card_number % 10 == 0:  # Every 10th card is more likely to be rare
         probabilities[Rarity.RARE] += 0.02
         probabilities[Rarity.COMMON] -= 0.02
 
@@ -367,11 +412,11 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
             response = openai_client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics."},
+                    {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics. Keep abilities clear and concise, using established keyword mechanics where possible. Limit flavor text to one or two impactful sentences."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=400,
-                temperature=0.8
+                max_tokens=800,
+                temperature=0.7
             )
             
             card_data_str = response.choices[0].message.content
@@ -462,7 +507,7 @@ def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
                 if attempt < max_attempts - 1:
                     continue
                 raise
-
+            
         except Exception as e:
             logger.error(f"Error generating card image (attempt {attempt + 1}): {e}")
             if attempt < max_attempts - 1:
@@ -470,36 +515,49 @@ def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
             raise ValueError(f"Failed to generate and store card image after {max_attempts} attempts: {str(e)}")
 
 def generate_image_prompt(card_data: Dict[str, Any]) -> str:
-    """Generate an image generation prompt based on card type and attributes."""
+    """Generate an artistic composition-focused image prompt."""
     card_type = card_data.get('type', 'Unknown')
-    card_name = card_data.get('name', '')
     color_identity = card_data.get('color', '')
     
-    prompt = f"Create fantasy artwork for a Magic: The Gathering card named {card_name}. "
+    # Define composition styles by type
+    compositions = {
+        'Creature': 'centered composition with strong diagonal lines',
+        'Enchantment': 'circular composition with flowing elements',
+        'Artifact': 'symmetrical composition with geometric shapes',
+        'Land': 'layered horizontal composition',
+        'Instant': 'dynamic spiral composition',
+        'Sorcery': 'radial composition with light rays',
+        'Planeswalker': 'triangular composition'
+    }
     
-    # Add color identity atmosphere
+    # Get base composition
+    base_type = card_type.split()[0]  # Handle "Legendary Creature" etc.
+    composition = compositions.get(base_type, 'balanced composition')
+    
+    # Create color palette description
     if isinstance(color_identity, list):
         color_str = '/'.join(color_identity)
     else:
         color_str = color_identity
-    prompt += f"Use a {color_str} color scheme. "
     
-    # Add type-specific details
+    # Build the prompt focusing on artistic elements
+    prompt = f"Digital fantasy art with {composition}. "
+    prompt += f"Use {color_str} color palette. "
+    
+    # Add type-specific artistic elements
     if 'Creature' in card_type:
-        prompt += f"Show a majestic {card_type.lower()} in a dynamic pose. "
+        prompt += "Natural forms and organic shapes. "
     elif 'Enchantment' in card_type:
-        prompt += "Depict a mystical magical effect or aura. "
+        prompt += "Ethereal light patterns and translucent layers. "
     elif 'Artifact' in card_type:
-        prompt += "Illustrate a detailed magical item or relic. "
+        prompt += "Crystalline structures and metallic surfaces. "
     elif 'Land' in card_type:
-        prompt += f"Illustrate a {color_str} themed landscape. "
-    elif 'Planeswalker' in card_type:
-        prompt += "Show a powerful planeswalker character in an epic scene. "
+        prompt += "Environmental elements with atmospheric perspective. "
     else:
-        prompt += "Depict the card's magical effect in a visually striking way. "
+        prompt += "Abstract magical elements with flowing energy. "
     
-    # Add quality instructions
-    prompt += "High detail, dramatic lighting, no text or borders. "
-    prompt += "Professional fantasy art style similar to official Magic: The Gathering artwork."
+    # Add technical art direction
+    prompt += "Professional digital painting with depth and atmosphere. "
+    prompt += "Dramatic lighting, high detail, no text or symbols."
     
     return prompt

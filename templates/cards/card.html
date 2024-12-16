@@ -1,6 +1,195 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+/* MTG Keyword Styling */
+.keyword {
+    font-weight: 600;
+    color: #1a365d;
+    position: relative;
+    transition: color 0.2s ease;
+}
+
+.keyword:hover {
+    color: #2c5282;
+}
+
+/* Reminder Text Styling */
+.reminder-text {
+    font-style: italic;
+    color: #666;
+    font-size: 0.95em;
+    display: inline;
+}
+
+/* Mana Symbol Styling in Text */
+.text-mana-symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.3em;
+    height: 1.3em;
+    border-radius: 50%;
+    font-size: 0.9em;
+    font-weight: bold;
+    margin: 0 0.1em;
+    vertical-align: middle;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.4);
+    transition: transform 0.2s ease;
+}
+
+.text-mana-symbol:hover {
+    transform: scale(1.1);
+}
+
+/* Hybrid Mana Symbol Styling */
+.hybrid-mana {
+    background: linear-gradient(135deg, var(--color1) 0%, var(--color1) 50%, var(--color2) 50%, var(--color2) 100%);
+}
+
+/* Counter Symbol Styling */
+.counter-symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5em;
+    height: 1.5em;
+    padding: 0 0.3em;
+    border-radius: 0.75em;
+    background: linear-gradient(45deg, #2d3748, #4a5568);
+    color: white;
+    font-size: 0.9em;
+    font-weight: bold;
+    margin: 0 0.1em;
+    vertical-align: middle;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Ability Line Styling */
+.ability-line {
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.ability-line:hover {
+    background-color: rgba(0,0,0,0.05);
+    transform: translateX(2px);
+}
+
+.ability-line::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.1), transparent);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.ability-line:hover::after {
+    transform: scaleX(1);
+}
+
+/* Enhanced Activated Ability Styling */
+.activated-ability {
+    background: linear-gradient(to right, rgba(0,0,0,0.05), transparent);
+    border-left: 2px solid rgba(0,0,0,0.2);
+}
+
+.activated-cost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    padding-right: 0.5em;
+    font-weight: 600;
+}
+
+/* Modal Ability Styling */
+.modal-ability {
+    border-left: 3px solid #4a5568;
+    margin-left: 1em;
+    padding-left: 1em;
+    position: relative;
+}
+
+.modal-ability::before {
+    content: '•';
+    position: absolute;
+    left: -1.5em;
+    color: #4a5568;
+}
+
+/* Card Text Box Styling */
+.card-text-box {
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+    background: linear-gradient(135deg, #f8f9fa, #f1f2f3);
+    position: relative;
+}
+
+.card-text-box::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.8), transparent);
+}
+
+/* Special Symbol Animations */
+@keyframes symbolPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.tap-symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.3em;
+    height: 1.3em;
+    font-size: 1.1em;
+    margin: 0 0.1em;
+    vertical-align: middle;
+    transform-origin: center;
+}
+
+/* Flavor Text Enhancement */
+.flavor-text-container {
+    position: relative;
+    margin-top: 1rem;
+    padding-top: 1rem;
+}
+
+.flavor-text-divider {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.2), transparent);
+}
+
+.flavor-text-quote {
+    font-family: Georgia, serif;
+    font-size: 1.2em;
+    opacity: 0.6;
+}
+
+/* Cost Separator */
+.cost-separator {
+    margin: 0 0.2em;
+    color: #4a5568;
+}
+</style>
+
 <div class="flex justify-center items-center min-h-screen">
     <!-- Responsive Card Layout -->
     <div id="card-container" class="mtg-card w-[90vw] sm:w-[375px] h-[80vh] sm:h-[525px] relative text-black rounded-[18px] shadow-lg overflow-hidden transition-transform transform hover:scale-105 duration-500 cursor-pointer" onclick="openLightbox('{{ card.images[0].backblaze_url if card.images and card.images[0].backblaze_url else card.local_image_path }}', '{{ card.rarity }}')">
@@ -44,9 +233,78 @@
             </div>
 
             <!-- Card Text: Abilities and Flavor Text -->
-            <div class="card-text bg-gray-100 bg-opacity-90 p-3 rounded flex-grow overflow-y-auto text-sm leading-relaxed">
-                <p class="abilities-text mb-2">{{ card.abilities|safe }}</p>
-                <p class="flavor-text mt-2 italic">{{ card.flavorText }}</p>
+            <div class="card-text card-text-box p-3 rounded flex-grow overflow-y-auto text-sm leading-relaxed">
+                <div class="abilities-text mb-2 space-y-3">
+                    {% set abilities = card.abilities|safe|replace('<br>', '\n')|trim %}
+                    {% for ability in abilities.split('\n') %}
+                        {% set isActivated = ':' in ability %}
+                        {% set isModal = ability.startswith('•') or ability.startswith('Choose one —') %}
+                        <div class="ability-container relative">
+                            <p class="ability-line relative pl-5 pr-3 py-1.5 rounded-sm transition-all duration-200 
+                                    {% if isActivated %}activated-ability{% endif %}
+                                    {% if isModal %}modal-ability{% endif %}">
+                                {% if isActivated %}
+                                    {% set parts = ability.split(':') %}
+                                    <span class="activated-cost">
+                                        {% set costs = parts[0].split(',') %}
+                                        {% for cost in costs %}
+                                            {% set cost = cost|trim %}
+                                            {% if '{' in cost %}
+                                                {% set symbol = cost|replace('{', '')|replace('}', '') %}
+                                                <span class="text-mana-symbol 
+                                                    {% if symbol|lower == 'w' %}bg-yellow-200 text-black
+                                                    {% elif symbol|lower == 'u' %}bg-blue-500 text-white
+                                                    {% elif symbol|lower == 'b' %}bg-black text-white
+                                                    {% elif symbol|lower == 'r' %}bg-red-500 text-white
+                                                    {% elif symbol|lower == 'g' %}bg-green-500 text-white
+                                                    {% else %}bg-gray-400 text-black{% endif %}">
+                                                    {{ symbol }}
+                                                </span>
+                                            {% elif cost == '{T}' %}
+                                                <span class="tap-symbol" title="Tap">⟳</span>
+                                            {% else %}
+                                                {{ cost }}
+                                            {% endif %}
+                                            {% if not loop.last %}<span class="cost-separator">,</span>{% endif %}
+                                        {% endfor %}
+                                    </span>
+                                    <span class="effect-text text-gray-800">: {{ parts[1]|trim }}</span>
+                                {% else %}
+                                    {% set keywords = ['Flying', 'First strike', 'Double strike', 'Deathtouch', 'Trample', 'Haste', 'Vigilance', 'Reach', 'Menace', 'Lifelink', 'Flash', 'Defender', 'Hexproof', 'Indestructible', 'Protection', 'Prowess', 'Scry', 'Ward'] %}
+                                    {% set abilityText = ability %}
+                                    {% for keyword in keywords %}
+                                        {% if keyword in ability %}
+                                            {% if '(' in ability and ')' in ability %}
+                                                {% set mainText = ability.split('(')[0]|replace(keyword, '<span class="keyword">' + keyword + '</span>') %}
+                                                {% set reminderText = '(' + ability.split('(')[1] %}
+                                                {% set abilityText = mainText + '<span class="reminder-text">' + reminderText + '</span>' %}
+                                            {% else %}
+                                                {% set abilityText = abilityText|replace(keyword, '<span class="keyword">' + keyword + '</span>') %}
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    <span class="static-text text-gray-800">{{ abilityText|safe }}</span>
+                                {% endif %}
+                                <!-- Enhanced bullet point with gradient -->
+                                <span class="absolute left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-gradient-to-br from-gray-400 to-gray-300"></span>
+                            </p>
+                            {% if isActivated %}
+                                <!-- Decorative line for activated abilities -->
+                                <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-gray-300 to-transparent"></div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+                {% if card.flavorText %}
+                    <div class="flavor-text-container">
+                        <div class="flavor-text-divider"></div>
+                        <div class="relative px-6 mt-2">
+                            <span class="flavor-text-quote absolute top-0 left-1">"</span>
+                            <p class="flavor-text italic text-gray-600 text-center">{{ card.flavorText }}</p>
+                            <span class="flavor-text-quote absolute bottom-0 right-1">"</span>
+                        </div>
+                    </div>
+                {% endif %}
             </div>
 
             <!-- Footer: Rarity and Power/Toughness -->
