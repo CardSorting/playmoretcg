@@ -5,63 +5,118 @@
 {% block content %}
 <div class="max-w-4xl mx-auto">
     <!-- Hero Section -->
-    <div class="text-center py-12">
-        <h1 class="text-4xl font-bold mb-4">Create AI-Powered Trading Cards</h1>
-        <p class="text-xl text-gray-600 mb-8">Generate unique cards with custom artwork and abilities</p>
-        <div class="space-x-4">
-            <a href="/sign-in" class="bg-blue-500 text-white px-6 py-3 rounded inline-block">Get Started</a>
+    <div class="relative text-center py-16 px-4 rounded-2xl overflow-hidden mb-12">
+        <!-- Gradient background -->
+        <div class="absolute inset-0 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 opacity-90"></div>
+        <!-- Content -->
+        <div class="relative z-10">
+            <h1 class="text-4xl md:text-5xl font-bold mb-6 text-white">Collect and Trade Virtual Trading Cards</h1>
+            <p class="text-xl text-white/90 mb-8 max-w-2xl mx-auto">Build your collection, open packs, and trade with other collectors in our virtual marketplace.</p>
+            <div class="space-x-4">
+                <a href="/sign-in" class="bg-white text-blue-600 px-8 py-3 rounded-lg inline-block font-medium hover:bg-blue-50 transition-colors shadow-lg">Join Now</a>
+                <a href="/explore" class="bg-blue-600 text-white px-8 py-3 rounded-lg inline-block font-medium hover:bg-blue-700 transition-colors border border-white/20">Explore Cards</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Section -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
+        <div class="bg-white rounded-xl p-4 text-center shadow-sm">
+            <div class="text-2xl font-bold text-blue-600 mb-1">10K+</div>
+            <div class="text-sm text-gray-600">Cards Created</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 text-center shadow-sm">
+            <div class="text-2xl font-bold text-purple-600 mb-1">5K+</div>
+            <div class="text-sm text-gray-600">Active Users</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 text-center shadow-sm">
+            <div class="text-2xl font-bold text-green-600 mb-1">2K+</div>
+            <div class="text-sm text-gray-600">Daily Trades</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 text-center shadow-sm">
+            <div class="text-2xl font-bold text-pink-600 mb-1">100+</div>
+            <div class="text-sm text-gray-600">Card Types</div>
         </div>
     </div>
 
     <!-- Features Section -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 py-12">
-        <div class="text-center">
-            <div class="bg-blue-100 rounded-lg p-6 mb-4">
-                <h3 class="text-lg font-semibold mb-2">Create Cards</h3>
-                <p class="text-gray-600">Generate unique cards with AI-powered artwork and abilities</p>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8 py-12">
+        <div class="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="text-blue-500 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
             </div>
+            <h3 class="text-lg font-semibold mb-2">Browse Cards</h3>
+            <p class="text-gray-600">Discover a wide variety of unique virtual trading cards.</p>
         </div>
-        <div class="text-center">
-            <div class="bg-green-100 rounded-lg p-6 mb-4">
-                <h3 class="text-lg font-semibold mb-2">Open Packs</h3>
-                <p class="text-gray-600">Discover new cards in randomized card packs</p>
+        <div class="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="text-purple-500 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                </svg>
             </div>
+            <h3 class="text-lg font-semibold mb-2">Open Packs</h3>
+            <p class="text-gray-600">Experience the thrill of opening virtual card packs.</p>
         </div>
-        <div class="text-center">
-            <div class="bg-purple-100 rounded-lg p-6 mb-4">
-                <h3 class="text-lg font-semibold mb-2">Build Collection</h3>
-                <p class="text-gray-600">Grow your unique card collection over time</p>
+        <div class="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="text-green-500 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
             </div>
+            <h3 class="text-lg font-semibold mb-2">Manage Collection</h3>
+            <p class="text-gray-600">Keep track of your growing collection of virtual cards.</p>
+        </div>
+        <div class="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="text-pink-500 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>
+                </svg>
+            </div>
+            <h3 class="text-lg font-semibold mb-2">Trade in Marketplace</h3>
+            <p class="text-gray-600">Buy, sell, and trade cards with other collectors.</p>
         </div>
     </div>
 
-    <!-- Example Cards Section -->
+    <!-- Featured Cards Section -->
     <div class="py-12">
-        <h2 class="text-2xl font-bold text-center mb-8">Example Cards</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div class="bg-white rounded-lg shadow p-4">
-                <div class="aspect-square bg-gray-200 rounded-lg mb-4"></div>
-                <h3 class="font-semibold mb-2">Mystic Dragon</h3>
-                <p class="text-gray-600 text-sm">Legendary Creature</p>
+        <h2 class="text-2xl font-bold text-center mb-8">Featured Cards</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {% for card in cards %}
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200">
+                <div class="aspect-square bg-gray-200 relative overflow-hidden preserve-3d mtg-card">
+                    {% if card.images and card.images[0].backblaze_url %}
+                    <img src="{{ card.images[0].backblaze_url }}" alt="{{ card.name }}" class="absolute inset-0 w-full h-full object-cover">
+                    {% endif %}
+                </div>
+                <div class="p-4">
+                    <h3 class="font-semibold mb-2">{{ card.name }}</h3>
+                    <p class="text-sm text-gray-600">{{ card.type }}</p>
+                    <div class="mt-4 flex justify-between items-center">
+                        <span class="text-sm font-medium
+                            {% if card.rarity == 'Mythic Rare' %}text-purple-600
+                            {% elif card.rarity == 'Rare' %}text-blue-600
+                            {% elif card.rarity == 'Uncommon' %}text-green-600
+                            {% else %}text-gray-600{% endif %}">
+                            {{ card.rarity }}
+                        </span>
+                        <span class="text-sm text-gray-500">Created by AI</span>
+                    </div>
+                </div>
             </div>
-            <div class="bg-white rounded-lg shadow p-4">
-                <div class="aspect-square bg-gray-200 rounded-lg mb-4"></div>
-                <h3 class="font-semibold mb-2">Ancient Artifact</h3>
-                <p class="text-gray-600 text-sm">Mythic Artifact</p>
-            </div>
-            <div class="bg-white rounded-lg shadow p-4">
-                <div class="aspect-square bg-gray-200 rounded-lg mb-4"></div>
-                <h3 class="font-semibold mb-2">Enchanted Forest</h3>
-                <p class="text-gray-600 text-sm">Land Card</p>
-            </div>
+            {% endfor %}
         </div>
     </div>
 
     <!-- CTA Section -->
     <div class="text-center py-12">
-        <h2 class="text-2xl font-bold mb-4">Ready to Create Your Own Cards?</h2>
-        <p class="text-gray-600 mb-6">Join now and start building your unique collection</p>
-        <a href="/sign-in" class="bg-blue-500 text-white px-6 py-3 rounded inline-block">Start Creating</a>
+        <h2 class="text-3xl font-bold mb-4">Ready to Start Your Collection?</h2>
+        <p class="text-xl text-gray-600 mb-8">Join our community and start collecting and trading today!</p>
+        <div class="space-x-4">
+            <a href="/sign-in" class="bg-blue-500 text-white px-8 py-3 rounded-lg inline-block font-medium hover:bg-blue-600 transition-colors">Join Now</a>
+            <a href="/marketplace" class="bg-gray-100 text-gray-800 px-8 py-3 rounded-lg inline-block font-medium hover:bg-gray-200 transition-colors">Visit Marketplace</a>
+        </div>
     </div>
 </div>
 {% endblock %}

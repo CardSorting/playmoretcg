@@ -145,7 +145,17 @@ async def create_card_handler(
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Landing page for all users."""
-    return templates.TemplateResponse("landing.html", get_template_context(request))
+    try:
+        context = get_template_context(request)
+        cards = firestore_db.get_random_cards()
+        context["cards"] = cards
+        return templates.TemplateResponse("landing.html", context)
+    except Exception as e:
+        logger.error(f"Error in home route: {e}")
+        context = get_template_context(request)
+        context["cards"] = []  # Fallback to empty list
+        context["error"] = "Unable to load cards"
+        return templates.TemplateResponse("landing.html", context)
 
 @app.get("/explore", response_class=HTMLResponse)
 async def explore(request: Request):
