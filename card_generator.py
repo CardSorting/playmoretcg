@@ -192,6 +192,8 @@ def generate_card_prompt(rarity: str = None) -> str:
         "Return a JSON object with these fields. Keep text concise and focused."
     )
     
+    # Log the final prompt
+    logger.info(f"Generated DALL-E prompt: {prompt}")
     return prompt
 
 def safe_get_dict(data: Dict[str, Any], key: str, default: Any = None) -> Any:
@@ -409,6 +411,9 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
     
     for attempt in range(max_attempts):
         try:
+            # Log that we're generating card data (not image)
+            logger.info("Generating card data with GPT-4...")
+            
             response = openai_client.chat.completions.create(
                 model="gpt-4",
                 messages=[
@@ -430,6 +435,11 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
                     continue
                 raise ValueError("Failed to generate valid card data after multiple attempts")
             
+            # Get themed elements based on colors
+            if 'color' in card_data:
+                colors = card_data['color'] if isinstance(card_data['color'], list) else [card_data['color']]
+                card_data['themes'] = get_themed_elements(colors)
+            
             standardize_card_data(card_data)
             
             if not validate_card_data(card_data):
@@ -447,10 +457,28 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
             card_data['set_name'] = set_name
             card_data['card_number'] = card_number
             
-            return card_data
-            
+            try:
+                # Log successful card data generation
+                logger.info("Card data generated successfully")
+                logger.debug(f"Final card data: {json.dumps(card_data, indent=2)}")
+                
+                # Try to generate the image
+                dalle_url, b2_url = generate_card_image(card_data)
+                
+                # If we got here, both card data and image generation succeeded
+                card_data['dalle_url'] = dalle_url
+                card_data['b2_url'] = b2_url
+                
+                return card_data
+                
+            except Exception as img_error:
+                logger.error(f"Error during image generation: {img_error}")
+                if attempt < max_attempts - 1:
+                    continue
+                raise ValueError(f"Failed to generate card image after {max_attempts} attempts: {str(img_error)}")
+                
         except Exception as e:
-            logger.error(f"Error generating card (attempt {attempt + 1}): {e}")
+            logger.error(f"Error generating card data (attempt {attempt + 1}): {e}")
             if attempt < max_attempts - 1:
                 continue
             raise ValueError(f"Failed to generate card after {max_attempts} attempts: {str(e)}")
@@ -458,21 +486,52 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
 def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
     """Generate artwork for the card using OpenAI's image generation API."""
-    prompt = generate_image_prompt(card_data)
+    logger.info(f"\n=== Generating image for card: {card_data.get('name')} ===")
+    
+    # Get card details
+    card_type = card_data.get('type', 'Unknown')
+    color_str = card_data.get('color', '')
+    if isinstance(color_str, list):
+        color_str = '/'.join(color_str)
+    
+    # Create a focused prompt for the image
+    prompt = (
+        f"Professional fantasy character art of a {card_type.lower()} for Magic card. "
+        f"Create ONLY the main character in {color_str} colors, centered in frame. "
+        "Use a completely plain white background. "
+        "NO background elements, NO patterns, NO decorative effects - ONLY the character. "
+        "Style: Detailed digital painting like a 3D model render. "
+        "Think character turnaround reference art."
+    )
     max_attempts = 3
 
     for attempt in range(max_attempts):
+        logger.info(f"\nAttempt {attempt + 1} of {max_attempts}")
         try:
+            # Log DALL-E request
+            logger.info("\nSending request to DALL-E API:")
+            logger.info(f"Model: dall-e-3")
+            logger.info(f"Size: 1024x1024")
+            logger.info(f"Quality: hd")  # Use HD quality for better detail
+            logger.info(f"Style: vivid")  # Use vivid for stronger artistic direction
+            logger.info(f"Prompt: {prompt}")
+            
             # Generate image with DALL-E
             response = openai_client.images.generate(
                 model="dall-e-3",
                 prompt=prompt,
                 size="1024x1024",
-                quality="standard",
-                n=1
+                quality="hd",  # Higher quality
+                n=1,
+                style="vivid"  # Better for fantasy art
             )
             
+            # Log DALL-E response
             image_url = response.data[0].url
+            logger.info("\nReceived response from DALL-E API:")
+            logger.info(f"Image URL: {image_url}")
+            if hasattr(response.data[0], 'revised_prompt'):
+                logger.info(f"Revised prompt: {response.data[0].revised_prompt}")
             
             # Download image from OpenAI with timeout and retries
             download_attempts = 3
@@ -514,50 +573,129 @@ def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
                 continue
             raise ValueError(f"Failed to generate and store card image after {max_attempts} attempts: {str(e)}")
 
-def generate_image_prompt(card_data: Dict[str, Any]) -> str:
-    """Generate an artistic composition-focused image prompt."""
-    card_type = card_data.get('type', 'Unknown')
-    color_identity = card_data.get('color', '')
+def create_dalle_prompt(card_data: Dict[str, Any]) -> str:
+    """Create a focused DALL-E prompt for card artwork."""
+    # Extract card details
+    name = card_data.get('name', '')
+    card_type = card_data.get('type', '').replace(' - ', ' ').split(' ')  # Split type into parts
+    color = card_data.get('color', '')
+    color_str = '/'.join(color) if isinstance(color, list) else color
     
-    # Define composition styles by type
-    compositions = {
-        'Creature': 'centered composition with strong diagonal lines',
-        'Enchantment': 'circular composition with flowing elements',
-        'Artifact': 'symmetrical composition with geometric shapes',
-        'Land': 'layered horizontal composition',
-        'Instant': 'dynamic spiral composition',
-        'Sorcery': 'radial composition with light rays',
-        'Planeswalker': 'triangular composition'
-    }
-    
-    # Get base composition
-    base_type = card_type.split()[0]  # Handle "Legendary Creature" etc.
-    composition = compositions.get(base_type, 'balanced composition')
-    
-    # Create color palette description
-    if isinstance(color_identity, list):
-        color_str = '/'.join(color_identity)
-    else:
-        color_str = color_identity
-    
-    # Build the prompt focusing on artistic elements
-    prompt = f"Digital fantasy art with {composition}. "
-    prompt += f"Use {color_str} color palette. "
-    
-    # Add type-specific artistic elements
+    # Start with the core subject description
     if 'Creature' in card_type:
-        prompt += "Natural forms and organic shapes. "
-    elif 'Enchantment' in card_type:
-        prompt += "Ethereal light patterns and translucent layers. "
-    elif 'Artifact' in card_type:
-        prompt += "Crystalline structures and metallic surfaces. "
-    elif 'Land' in card_type:
-        prompt += "Environmental elements with atmospheric perspective. "
+        # Extract creature types and use them in the prompt
+        creature_types = ' '.join(card_type[2:]) if len(card_type) > 2 else 'creature'
+        style = (
+            f"Professional fantasy illustration of a {creature_types}. "
+            f"Create a detailed {color_str} colored {creature_types} character "
+            "centered in frame against a pure white background. "
+            "Focus on the character's distinctive features and anatomy. "
+            "The character must be the ONLY element - NO background elements, "
+            "NO special effects, NO decorative elements, NO patterns. "
+            "Style: High-detail digital painting like a character concept art piece. "
+            "Think professional fantasy character art on a pure white studio backdrop."
+        )
     else:
-        prompt += "Abstract magical elements with flowing energy. "
+        # For non-creature cards, be specific about what we want based on card type
+        if 'Enchantment' in card_type:
+            style = (
+                f"Professional illustration of a single {color_str} magical crystal or orb "
+                "floating in empty space. Crystal/orb must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think high-end jewelry photography on white backdrop."
+            )
+        elif 'Artifact' in card_type:
+            style = (
+                f"Professional illustration of a single {color_str} magical artifact "
+                "floating in empty space. Artifact must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think product photography of a precious object on white backdrop."
+            )
+        elif 'Instant' in card_type or 'Sorcery' in card_type:
+            style = (
+                f"Professional illustration of a single {color_str} magical rune or sigil "
+                "floating in empty space. Rune/sigil must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think minimalist magical symbol on white backdrop."
+            )
+        else:
+            style = (
+                f"Professional illustration of a single {color_str} magical object "
+                "floating in empty space. Object must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think product photography on white backdrop."
+            )
     
-    # Add technical art direction
-    prompt += "Professional digital painting with depth and atmosphere. "
-    prompt += "Dramatic lighting, high detail, no text or symbols."
+    # Log the prompt
+    logger.info(f"Generated DALL-E prompt for {name}:")
+    logger.info(style)
+    
+    return style
+
+def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
+    """Generate artwork for the card using OpenAI's image generation API."""
+    logger.info(f"\n=== Generating image for card: {card_data.get('name')} ===")
+    prompt = create_dalle_prompt(card_data)
+    max_attempts = 3
+    last_error = None
+
+    for attempt in range(max_attempts):
+        try:
+            # Log DALL-E request
+            logger.info("\nSending request to DALL-E API:")
+            logger.info(f"Model: dall-e-3")
+            logger.info(f"Size: 1024x1024")
+            logger.info(f"Quality: hd")
+            logger.info(f"Style: vivid")
+            logger.info(f"Prompt: {prompt}")
+            
+            # Generate image with DALL-E
+            response = openai_client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
+                quality="hd",
+                n=1,
+                style="vivid"
+            )
+            
+            # Get the image URL
+            dalle_url = response.data[0].url
+            logger.info("\nReceived response from DALL-E API:")
+            logger.info(f"Image URL: {dalle_url}")
+            
+            if not dalle_url:
+                raise ValueError("Failed to get valid URL from DALL-E")
+            
+            # Download and upload to Backblaze
+            response = requests.get(dalle_url, timeout=30)
+            if response.status_code != 200:
+                raise ValueError(f"Failed to download image: Status {response.status_code}")
+            
+            image_data = response.content
+            if not image_data:
+                raise ValueError("Downloaded image data is empty")
+            
+            filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+            b2_url = upload_image(image_data, filename)
+            
+            if not b2_url:
+                raise ValueError("Failed to get valid URL from Backblaze upload")
+            
+            return dalle_url, b2_url
+            
+        except Exception as e:
+            logger.error(f"Error generating card image (attempt {attempt + 1}): {e}")
+            last_error = e
+            logger.warning(f"Attempt {attempt + 1} failed, {'retrying' if attempt < max_attempts - 1 else 'giving up'}")
+            continue
+    
+    # If we've exhausted all attempts, raise the last error
+    if last_error:
+        logger.error(f"All {max_attempts} attempts failed")
+        raise ValueError(f"Failed to generate and store card image: {str(last_error)}")
+    
+    # This should never be reached as we either return in the try block or raise in the error handling
+    raise ValueError("Unexpected error in image generation")
     
     return prompt
