@@ -389,16 +389,27 @@ def add_credits(user_id: str, amount: int) -> int:
     user_ref.update({'credits': new_balance})
     return new_balance
 
-def deduct_credits(user_id: str, amount: int) -> bool:
+def deduct_credits(user_id: str, amount: int, transaction=None) -> bool:
     """Deduct credits from user's balance if sufficient funds exist."""
     user_ref = db.collection('users').document(user_id)
-    current_credits = get_user_credits(user_id)
     
-    if current_credits >= amount:
-        new_balance = current_credits - amount
-        user_ref.update({'credits': new_balance})
-        return True
-    return False
+    if transaction:
+        user_doc = transaction.get(user_ref)
+        if not user_doc.exists:
+            return False
+        current_credits = user_doc.to_dict().get('credits', 0)
+        if current_credits >= amount:
+            new_balance = current_credits - amount
+            transaction.update(user_ref, {'credits': new_balance})
+            return True
+        return False
+    else:
+        current_credits = get_user_credits(user_id)
+        if current_credits >= amount:
+            new_balance = current_credits - amount
+            user_ref.update({'credits': new_balance})
+            return True
+        return False
 
 # User Operations
 def get_user(user_id: str) -> Optional[Dict[str, Any]]:
@@ -492,83 +503,107 @@ def get_random_cards_by_rarity(rarity: str, count: int = 1, exclude_ids: List[st
         
         if not cards:
             raise ValueError(f"No available {rarity} cards")
+        
+        selected_cards = []
+        available_cards = cards.copy()
+        
+        for _ in range(count):
+            if not available_cards:
+                break # No more unique cards available
             
-        # Randomly select the requested number of cards
-        selected = random.sample(cards, min(count, len(cards)))
-        return [{**doc.to_dict(), 'id': doc.id} for doc in selected]
+            selected = random.choice(available_cards)
+            selected_cards.append({**selected.to_dict(), 'id': selected.id})
+            available_cards.remove(selected)
+            
+        return selected_cards
         
     except Exception as e:
         logger.error(f"Error getting random {rarity} cards: {e}")
         raise
 
-def claim_card(card_id: str, user_id: str) -> Dict[str, Any]:
+def claim_card(card_id: str, user_id: str, transaction=None) -> Dict[str, Any]:
     """Claim a card for a user."""
     try:
         card_ref = db.collection('cards').document(card_id)
-        card = card_ref.get()
         
-        if not card.exists:
-            raise ValueError(f"Card {card_id} not found")
-            
-        card_data = card.to_dict()
-        if card_data['user_id'] != 'system':
-            raise ValueError(f"Card {card_id} is already claimed")
-            
-        # Update the card with the new user_id
-        card_ref.update({
-            'user_id': user_id,
-            'claimed_at': datetime.utcnow()
-        })
-        
-        # Get the updated card
-        updated_card = card_ref.get()
-        result = updated_card.to_dict()
-        result['id'] = card_id
-        return result
+        if transaction:
+            card = transaction.get(card_ref)
+            if not card.exists:
+                raise ValueError(f"Card {card_id} not found")
+            card_data = card.to_dict()
+            if card_data['user_id'] != 'system':
+                raise ValueError(f"Card {card_id} is already claimed")
+            transaction.update(card_ref, {
+                'user_id': user_id,
+                'claimed_at': datetime.utcnow()
+            })
+            result = card.to_dict()
+            result['id'] = card_id
+            return result
+        else:
+            card = card_ref.get()
+            if not card.exists:
+                raise ValueError(f"Card {card_id} not found")
+            card_data = card.to_dict()
+            if card_data['user_id'] != 'system':
+                raise ValueError(f"Card {card_id} is already claimed")
+            # Update the card with the new user_id
+            card_ref.update({
+                'user_id': user_id,
+                'claimed_at': datetime.utcnow()
+            })
+            # Get the updated card
+            updated_card = card_ref.get()
+            result = updated_card.to_dict()
+            result['id'] = card_id
+            return result
         
     except Exception as e:
         logger.error(f"Error claiming card {card_id} for user {user_id}: {e}")
         raise
 
 def open_pack(user_id: str, pack_cost: int = 50) -> List[Dict[str, Any]]:
-    """Open a pack of cards for a user."""
+    """Open a pack of cards for a user using a transaction."""
     try:
-        # Check if user has enough credits
-        if not deduct_credits(user_id, pack_cost):
-            raise ValueError(f"Insufficient credits. Pack costs {pack_cost} credits.")
-            
-        pack_cards = []
-        claimed_ids = []
-        
-        # Get one rare/mythic rare card (15% chance of mythic)
-        is_mythic = random.random() < 0.15
-        rarity = Rarity.MYTHIC_RARE.value if is_mythic else Rarity.RARE.value
-        rare_cards = get_random_cards_by_rarity(rarity, 1)
-        for card in rare_cards:
-            claimed = claim_card(card['id'], user_id)
-            pack_cards.append(claimed)
-            claimed_ids.append(card['id'])
-        
-        # Get three uncommon cards
-        uncommon_cards = get_random_cards_by_rarity(Rarity.UNCOMMON.value, 3, claimed_ids)
-        for card in uncommon_cards:
-            claimed = claim_card(card['id'], user_id)
-            pack_cards.append(claimed)
-            claimed_ids.append(card['id'])
-        
-        # Get six common cards
-        common_cards = get_random_cards_by_rarity(Rarity.COMMON.value, 6, claimed_ids)
-        for card in common_cards:
-            claimed = claim_card(card['id'], user_id)
-            pack_cards.append(claimed)
-            claimed_ids.append(card['id'])
-        
-        # Sort cards by rarity
-        return sorted(
-            pack_cards,
-            key=lambda x: [Rarity.MYTHIC_RARE.value, Rarity.RARE.value, Rarity.UNCOMMON.value, Rarity.COMMON.value].index(x['rarity'])
-        )
-        
+        def open_pack_transaction(transaction):
+            # Check if user has enough credits
+            if not deduct_credits(user_id, pack_cost, transaction=transaction):
+                raise ValueError(f"Insufficient credits. Pack costs {pack_cost} credits.")
+
+            pack_cards = []
+            claimed_ids = []
+
+            # Get one rare/mythic rare card (15% chance of mythic)
+            is_mythic = random.random() < 0.15
+            rarity = Rarity.MYTHIC_RARE.value if is_mythic else Rarity.RARE.value
+            rare_cards = get_random_cards_by_rarity(rarity, 1, exclude_ids=claimed_ids)
+            for card in rare_cards:
+                claimed = claim_card(card['id'], user_id, transaction=transaction)
+                pack_cards.append(claimed)
+                claimed_ids.append(card['id'])
+
+            # Get three uncommon cards
+            uncommon_cards = get_random_cards_by_rarity(Rarity.UNCOMMON.value, 3, exclude_ids=claimed_ids)
+            for card in uncommon_cards:
+                claimed = claim_card(card['id'], user_id, transaction=transaction)
+                pack_cards.append(claimed)
+                claimed_ids.append(card['id'])
+
+            # Get six common cards
+            common_cards = get_random_cards_by_rarity(Rarity.COMMON.value, 6, exclude_ids=claimed_ids)
+            for card in common_cards:
+                claimed = claim_card(card['id'], user_id, transaction=transaction)
+                pack_cards.append(claimed)
+                claimed_ids.append(card['id'])
+
+            # Sort cards by rarity
+            return sorted(
+                pack_cards,
+                key=lambda x: [Rarity.MYTHIC_RARE.value, Rarity.RARE.value, Rarity.UNCOMMON.value, Rarity.COMMON.value].index(x['rarity'])
+            )
+
+        # Run the transaction
+        return db.run_in_transaction(open_pack_transaction)
     except Exception as e:
         logger.error(f"Error opening pack for user {user_id}: {e}")
         raise
