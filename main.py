@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from firebase_admin import auth
-import card_generator
+import card_generator_1
 import firestore_db
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from router_config import configure_routers
@@ -120,11 +120,11 @@ async def create_card_handler(
     
     try:
         # Generate card data
-        card_data = card_generator.generate_card(rarity)
+        card_data = card_generator_1.generate_card(rarity)
         card_data['user_id'] = 'system'  # Created cards start unclaimed
         
         # Generate and upload image
-        image_url, b2_url = card_generator.generate_card_image(card_data)
+        image_url, b2_url = card_generator_1.generate_card_image(card_data)
         filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
         
         # Create card in Firestore

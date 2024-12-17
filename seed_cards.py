@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import List, Dict, Any
-from card_generator import generate_card, generate_card_image
+from card_generator_1 import generate_card, generate_card_image
 import firestore_db
 from models import Rarity
 

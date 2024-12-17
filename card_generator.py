@@ -3,12 +3,11 @@ import json
 import logging
 import requests
 import io
-import base64
 from typing import Dict, Any, List, Tuple
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_random_exponential
+from openai_config import openai_client
 from backblaze_config import upload_image
-from dreambees_config import generate_content
 from models import Rarity
 
 # Logging configuration
@@ -138,8 +137,8 @@ def get_themed_elements(colors: List[str]) -> Dict[str, Any]:
         color_keywords = COLOR_THEMES[color]['keywords']
         
         # Add 2-3 random creatures and keywords from each color
-        creatures.extend(random.sample(color_creatures, min(random.randint(1, 3), len(color_creatures))))
-        keywords.extend(random.sample(color_keywords, min(random.randint(1, 3), len(color_keywords))))
+        creatures.extend(random.sample(color_creatures, min(random.randint(2, 3), len(color_creatures))))
+        keywords.extend(random.sample(color_keywords, min(random.randint(2, 3), len(color_keywords))))
     
     # Remove duplicates while preserving order
     creatures = list(dict.fromkeys(creatures))
@@ -177,18 +176,20 @@ def generate_card_prompt(rarity: str = None) -> str:
     
     # Build the prompt with emphasis on concise, focused design
     prompt = (
-        f"Create a Magic: The Gathering card and return it as a JSON object with this exact structure:\n"
-        "{\n"
-        '  "name": "Brief thematic name using elements from ' + ', '.join(themes['creatures'][:2]) + ' (max 40 chars)",\n'
-        '  "manaCost": "' + (mana_cost_guidance if mana_cost_guidance else 'Balanced mana cost with curly braces {X}') + '",\n'
-        '  "type": "' + card_type + '",\n'
-        '  "color": "' + color_str + '",\n'
-        '  "abilities": ["1-3 concise abilities incorporating ' + ', '.join(random.sample(themes['keywords'], min(2, len(themes['keywords'])))) + '"],\n'
-        '  "powerToughness": "For creatures only, balanced stats matching mana cost",\n'
-        '  "flavorText": "One impactful sentence (max 120 chars)",\n'
-        '  "rarity": "' + rarity_prompt + '"\n'
-        "}\n"
-        "Ensure the response is valid JSON. Each ability should be under 150 chars and focus on clear effects using established mechanics."
+        f"Design a focused Magic: The Gathering card with these specifications:\n"
+        f"- Name: Brief, thematic name (max 40 chars) using elements from {', '.join(themes['creatures'][:2])}.\n"
+        f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Balanced mana cost with curly braces {X}.'}\n"
+        f"- Type: {card_type}\n"
+        f"- Color: {color_str}\n"
+        "- Abilities: Create 1-3 concise, synergistic abilities that:\n"
+        f"  * Incorporate these keywords: {', '.join(random.sample(themes['keywords'], min(2, len(themes['keywords']))))}\n"
+        "  * Focus on clear, direct effects\n"
+        "  * Each ability should be under 150 characters\n"
+        "  * Prefer established keyword mechanics when possible\n"
+        "- PowerToughness: For creatures, use balanced stats matching the mana cost.\n"
+        f"- FlavorText: One impactful sentence (max 120 chars) capturing the card's essence.\n"
+        f"- Rarity: {rarity_prompt}\n"
+        "Return a JSON object with these fields. Keep text concise and focused."
     )
     
     # Log the final prompt
@@ -231,6 +232,15 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
     if 'abilities' in card_data:
         abilities = card_data['abilities']
         
+        # Convert string to list if needed
+        if isinstance(abilities, str):
+            try:
+                # Try to parse as JSON if it's a string representation of JSON
+                abilities = json.loads(abilities)
+            except json.JSONDecodeError:
+                # If not JSON, split by newlines and filter empty lines
+                abilities = [line.strip() for line in abilities.splitlines() if line.strip()]
+        
         # Ensure abilities is a list
         if not isinstance(abilities, list):
             abilities = [str(abilities)]
@@ -238,8 +248,16 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
         # Format each ability with length limits
         formatted_abilities = []
         for ability in abilities:
-            ability_text = str(ability).strip()
-            if ability_text:  # Only add non-empty abilities
+            if isinstance(ability, dict):
+                desc = ability.get('Description', '')
+                if ability.get('Type') == 'Activated' and ability.get('Cost'):
+                    desc = f"{ability['Cost']}: {desc}"
+                # Truncate description if too long
+                if len(desc) > LIMITS['abilities']:
+                    desc = desc[:LIMITS['abilities']-3] + '...'
+                formatted_abilities.append(desc)
+            else:
+                ability_text = str(ability)
                 # Truncate ability text if too long
                 if len(ability_text) > LIMITS['abilities']:
                     ability_text = ability_text[:LIMITS['abilities']-3] + '...'
@@ -251,7 +269,7 @@ def standardize_card_data(card_data: Dict[str, Any]) -> None:
             logger.warning(f"Card {card_data.get('name', 'Unknown')} had too many abilities, truncated to 4")
         
         # Join abilities with line breaks
-        card_data['abilities'] = '<br>'.join(formatted_abilities) if formatted_abilities else 'No abilities'
+        card_data['abilities'] = '<br>'.join(formatted_abilities)
     
     # Handle power/toughness
     if 'type' in card_data and 'Creature' in card_data['type']:
@@ -337,31 +355,16 @@ def validate_card_data(card_data: Dict[str, Any]) -> bool:
         return False
     
     # Validate abilities format and count
-    abilities = card_data.get('abilities', [])
-    
-    # Handle both string (joined with <br>) and list formats
-    if isinstance(abilities, str):
-        abilities = abilities.split('<br>')
-    elif not isinstance(abilities, list):
-        logger.error("Invalid abilities format - must be string or list")
-        return False
-    
-    # Filter out empty abilities
-    abilities = [ability.strip() for ability in abilities if ability.strip()]
-    
-    # Check number of abilities
-    if len(abilities) > 4:
-        logger.error("Too many abilities (maximum 4 allowed)")
-        return False
-    elif len(abilities) == 0:
-        logger.error("At least one ability is required")
-        return False
-        
-    # Check each ability's length
-    for ability in abilities:
-        if len(str(ability)) > 150:  # Max length per ability
-            logger.error("Ability text too long (maximum 150 characters per ability)")
+    if isinstance(card_data['abilities'], str):
+        abilities = card_data['abilities'].split('<br>')
+        if len(abilities) > 4:
+            logger.error("Too many abilities (maximum 4 allowed)")
             return False
+        for ability in abilities:
+            if len(ability) > 150:  # Max length per ability
+                logger.error("Ability text too long (maximum 150 characters per ability)")
+                return False
+    
     return True
 
 def get_rarity(set_number: int, card_number: int) -> Rarity:
@@ -402,124 +405,295 @@ def get_rarity(set_number: int, card_number: int) -> Rarity:
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
 def generate_card(rarity: str = None) -> Dict[str, Any]:
-    """Generate a card with optional rarity using Google Gen AI."""
+    """Generate a card with optional rarity."""
     prompt = generate_card_prompt(rarity)
     max_attempts = 3
-
+    
     for attempt in range(max_attempts):
         try:
             # Log that we're generating card data (not image)
-            logger.info("Generating card data with DreamBees LLM...")
-
-            card_data_str = generate_content(
-                prompt + "\nIMPORTANT: Response must be valid JSON only, no additional text."
-            ).strip()
-            logger.debug(f"Raw card data from Gemini (attempt {attempt + 1}): {card_data_str}")
-
-            # Try to extract JSON if there's any surrounding text
-            start = card_data_str.find('{')
-            end = card_data_str.rfind('}') + 1
-            if start >= 0 and end > start:
-                card_data_str = card_data_str[start:end]
+            logger.info("Generating card data with GPT-4...")
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics. Keep abilities clear and concise, using established keyword mechanics where possible. Limit flavor text to one or two impactful sentences."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,
+                temperature=0.7
+            )
+            
+            card_data_str = response.choices[0].message.content
+            logger.debug(f"Raw card data from GPT (attempt {attempt + 1}): {card_data_str}")
             
             try:
                 card_data = json.loads(card_data_str)
-                
-                # Ensure abilities is an array
-                if 'abilities' in card_data:
-                    if isinstance(card_data['abilities'], str):
-                        # If it's a string, convert to array
-                        card_data['abilities'] = [card_data['abilities']]
-                    elif not isinstance(card_data['abilities'], list):
-                        # If it's neither string nor list, make it an array
-                        card_data['abilities'] = [str(card_data['abilities'])]
-                else:
-                    card_data['abilities'] = []
-                    
-            except (json.JSONDecodeError, ValueError) as e:
+            except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON response: {e}")
                 if attempt < max_attempts - 1:
                     continue
                 raise ValueError("Failed to generate valid card data after multiple attempts")
-
+            
             # Get themed elements based on colors
             if 'color' in card_data:
                 colors = card_data['color'] if isinstance(card_data['color'], list) else [card_data['color']]
                 card_data['themes'] = get_themed_elements(colors)
-
+            
             standardize_card_data(card_data)
-
+            
             if not validate_card_data(card_data):
                 if attempt < max_attempts - 1:
                     logger.warning(f"Invalid card data on attempt {attempt + 1}, retrying...")
                     continue
                 raise ValueError("Failed to generate valid card data after multiple attempts")
-
+            
             set_name, set_number, card_number = get_next_set_name_and_number()
-
+            
             if not rarity:
                 card_rarity = get_rarity(set_number, card_number)
                 card_data['rarity'] = card_rarity.value
-
+            
             card_data['set_name'] = set_name
             card_data['card_number'] = card_number
-
-            # Log successful card data generation
-            logger.info("Card data generated successfully")
-            logger.debug(f"Final card data: {json.dumps(card_data, indent=2)}")
-
-            # Try to generate image, but continue if it fails
+            
             try:
-                image_prompt = f"A Magic The Gathering card with the following details: {card_data}"
-                image_url = generate_card_image(image_prompt)
-                card_data['image_url'] = image_url
-            except Exception as e:
-                logger.warning(f"Image generation failed, continuing without image: {str(e)}")
-                card_data['image_url'] = None
-
-            # Return card data regardless of image generation success
-            return card_data
-
+                # Log successful card data generation
+                logger.info("Card data generated successfully")
+                logger.debug(f"Final card data: {json.dumps(card_data, indent=2)}")
+                
+                # Try to generate the image
+                dalle_url, b2_url = generate_card_image(card_data)
+                
+                # If we got here, both card data and image generation succeeded
+                card_data['dalle_url'] = dalle_url
+                card_data['b2_url'] = b2_url
+                
+                return card_data
+                
+            except Exception as img_error:
+                logger.error(f"Error during image generation: {img_error}")
+                if attempt < max_attempts - 1:
+                    continue
+                raise ValueError(f"Failed to generate card image after {max_attempts} attempts: {str(img_error)}")
+                
         except Exception as e:
             logger.error(f"Error generating card data (attempt {attempt + 1}): {e}")
             if attempt < max_attempts - 1:
                 continue
             raise ValueError(f"Failed to generate card after {max_attempts} attempts: {str(e)}")
-    raise ValueError(f"Failed to generate card after {max_attempts} attempts")
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
-def generate_card_image(prompt: str) -> str:
-    """Generate an image using the Stable Diffusion API."""
-    url = "https://api.dreambeesart.com/api/generate/"
-    payload = json.dumps({
-        "prompt": prompt,
-        "steps": 20,
-        "width": 1024,
-        "height": 1024,
-    })
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    try:
-        logger.info(f"Generating card image with Stable Diffusion API...")
-        response = requests.post(url, headers=headers, data=payload)
-        response.raise_for_status()
-        r = response.json()
-        
-        if 'image_url' not in r:
-            raise ValueError("No image URL returned from DreamBees API")
-        
-        
-        image_url = r['image_url']
-        
-        logger.info(f"Card image URL received successfully: {image_url}")
-        return image_url
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error during Stable Diffusion API request: {e}")
-        raise ValueError(f"Failed to generate image: {str(e)}")
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
-        logger.error(f"Error processing Stable Diffusion API response: {e}")
-        raise ValueError(f"Failed to process image response: {str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected error during image generation: {e}")
-        raise ValueError(f"Unexpected error during image generation: {str(e)}")
+def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
+    """Generate artwork for the card using OpenAI's image generation API."""
+    logger.info(f"\n=== Generating image for card: {card_data.get('name')} ===")
+    
+    # Get card details
+    card_type = card_data.get('type', 'Unknown')
+    color_str = card_data.get('color', '')
+    if isinstance(color_str, list):
+        color_str = '/'.join(color_str)
+    
+    # Create a focused prompt for the image
+    prompt = (
+        f"Professional fantasy character art of a {card_type.lower()} for Magic card. "
+        f"Create ONLY the main character in {color_str} colors, centered in frame. "
+        "Use a completely plain white background. "
+        "NO background elements, NO patterns, NO decorative effects - ONLY the character. "
+        "Style: Detailed digital art like a 3D model render. "
+    )
+    max_attempts = 3
+
+    for attempt in range(max_attempts):
+        logger.info(f"\nAttempt {attempt + 1} of {max_attempts}")
+        try:
+            # Log DALL-E request
+            logger.info("\nSending request to DALL-E API:")
+            logger.info(f"Model: dall-e-3")
+            logger.info(f"Size: 1024x1024")
+            logger.info(f"Quality: hd")  # Use HD quality for better detail
+            logger.info(f"Style: vivid")  # Use vivid for stronger artistic direction
+            logger.info(f"Prompt: {prompt}")
+            
+            # Generate image with DALL-E
+            response = openai_client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
+                quality="hd",  # Higher quality
+                n=1,
+                style="vivid"  # Better for fantasy art
+            )
+            
+            # Log DALL-E response
+            image_url = response.data[0].url
+            logger.info("\nReceived response from DALL-E API:")
+            logger.info(f"Image URL: {image_url}")
+            if hasattr(response.data[0], 'revised_prompt'):
+                logger.info(f"Revised prompt: {response.data[0].revised_prompt}")
+            
+            # Download image from OpenAI with timeout and retries
+            download_attempts = 3
+            for dl_attempt in range(download_attempts):
+                try:
+                    response = requests.get(image_url, timeout=30)
+                    if response.status_code == 200:
+                        break
+                    logger.warning(f"Failed to download image (attempt {dl_attempt + 1}): Status {response.status_code}")
+                    if dl_attempt == download_attempts - 1:
+                        raise ValueError(f"Failed to download image after {download_attempts} attempts")
+                except requests.RequestException as e:
+                    if dl_attempt == download_attempts - 1:
+                        raise
+                    logger.warning(f"Download attempt {dl_attempt + 1} failed: {e}")
+            
+            # Prepare image data for upload
+            image_data = response.content
+            if not image_data:
+                raise ValueError("Downloaded image data is empty")
+                
+            filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+            
+            # Upload to Backblaze with validation
+            try:
+                b2_url = upload_image(image_data, filename)
+                if not b2_url:
+                    raise ValueError("Failed to get valid URL from Backblaze upload")
+                return image_url, b2_url
+            except Exception as e:
+                logger.error(f"Backblaze upload error: {e}")
+                if attempt < max_attempts - 1:
+                    continue
+                raise
+            
+        except Exception as e:
+            logger.error(f"Error generating card image (attempt {attempt + 1}): {e}")
+            if attempt < max_attempts - 1:
+                continue
+            raise ValueError(f"Failed to generate and store card image after {max_attempts} attempts: {str(e)}")
+
+def create_dalle_prompt(card_data: Dict[str, Any]) -> str:
+    """Create a focused DALL-E prompt for card artwork."""
+    # Extract card details
+    name = card_data.get('name', '')
+    card_type = card_data.get('type', '')
+    color = card_data.get('color', '')
+    color_str = '/'.join(color) if isinstance(color, list) else color
+    
+    # Start with the core subject description
+    if 'Creature' in card_type:
+        creature_types = card_data.get('themes', {}).get('creatures', [])
+        creature_str = ' '.join(creature_types[:2]) if creature_types else card_type
+        style = (
+            f"Professional fantasy illustration of a {creature_str}. "
+            f"Create a detailed {color_str} colored character "
+            "centered in frame against a pure white background. "
+            "Focus on the character's distinctive features and anatomy. "
+            "The character must be the ONLY element - NO background elements, "
+            "NO special effects, NO decorative elements, NO patterns. "
+            "Think professional fantasy character art on a pure white studio backdrop."
+        )
+    else:
+        # For non-creature cards, be specific about what we want based on card type
+        if 'Enchantment' in card_type:
+            style = (
+                f"Professional illustration of a single {color_str} magical crystal or orb "
+                "floating in empty space. Crystal/orb must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think high-end jewelry photography on white backdrop."
+            )
+        elif 'Artifact' in card_type:
+            style = (
+                f"Professional illustration of a single {color_str} magical artifact "
+                "floating in empty space. Artifact must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think product photography of a precious object on white backdrop."
+            )
+        elif 'Instant' in card_type or 'Sorcery' in card_type:
+            style = (
+                f"Professional illustration of a single {color_str} magical rune or sigil "
+                "floating in empty space. Rune/sigil must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think minimalist magical symbol on white backdrop."
+            )
+        else:
+            style = (
+                f"Professional illustration of a single {color_str} magical object "
+                "floating in empty space. Object must be the ONLY element, centered "
+                "against a pure white background. NO effects, NO patterns, NO decorative elements. "
+                "Think product photography on white backdrop."
+            )
+    
+    # Log the prompt
+    logger.info(f"Generated DALL-E prompt for {name}:")
+    logger.info(style)
+    
+    return style
+
+def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
+    """Generate artwork for the card using OpenAI's image generation API."""
+    logger.info(f"\n=== Generating image for card: {card_data.get('name')} ===")
+    prompt = create_dalle_prompt(card_data)
+    max_attempts = 3
+    last_error = None
+
+    for attempt in range(max_attempts):
+        try:
+            # Log DALL-E request
+            logger.info("\nSending request to DALL-E API:")
+            logger.info(f"Model: dall-e-3")
+            logger.info(f"Size: 1024x1024")
+            logger.info(f"Quality: hd")
+            logger.info(f"Style: vivid")
+            logger.info(f"Prompt: {prompt}")
+            
+            # Generate image with DALL-E
+            response = openai_client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
+                quality="hd",
+                n=1,
+                style="vivid"
+            )
+            
+            # Get the image URL
+            dalle_url = response.data[0].url
+            logger.info("\nReceived response from DALL-E API:")
+            logger.info(f"Image URL: {dalle_url}")
+            
+            if not dalle_url:
+                raise ValueError("Failed to get valid URL from DALL-E")
+            
+            # Download and upload to Backblaze
+            response = requests.get(dalle_url, timeout=30)
+            if response.status_code != 200:
+                raise ValueError(f"Failed to download image: Status {response.status_code}")
+            
+            image_data = response.content
+            if not image_data:
+                raise ValueError("Downloaded image data is empty")
+            
+            filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+            b2_url = upload_image(image_data, filename)
+            
+            if not b2_url:
+                raise ValueError("Failed to get valid URL from Backblaze upload")
+            
+            return dalle_url, b2_url
+            
+        except Exception as e:
+            logger.error(f"Error generating card image (attempt {attempt + 1}): {e}")
+            last_error = e
+            logger.warning(f"Attempt {attempt + 1} failed, {'retrying' if attempt < max_attempts - 1 else 'giving up'}")
+            continue
+    
+    # If we've exhausted all attempts, raise the last error
+    if last_error:
+        logger.error(f"All {max_attempts} attempts failed")
+        raise ValueError(f"Failed to generate and store card image: {str(last_error)}")
+    
+    # This should never be reached as we either return in the try block or raise in the error handling
+    raise ValueError("Unexpected error in image generation")
+    
+    return prompt
