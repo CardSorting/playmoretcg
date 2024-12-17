@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Tuple
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from backblaze_config import upload_image
-from google_genai_config import client
+from dreambees_config import generate_content
 from models import Rarity
 
 # Logging configuration
@@ -138,8 +138,8 @@ def get_themed_elements(colors: List[str]) -> Dict[str, Any]:
         color_keywords = COLOR_THEMES[color]['keywords']
         
         # Add 2-3 random creatures and keywords from each color
-        creatures.extend(random.sample(color_creatures, min(random.randint(2, 3), len(color_creatures))))
-        keywords.extend(random.sample(color_keywords, min(random.randint(2, 3), len(color_keywords))))
+        creatures.extend(random.sample(color_creatures, min(random.randint(1, 3), len(color_creatures))))
+        keywords.extend(random.sample(color_keywords, min(random.randint(1, 3), len(color_keywords))))
     
     # Remove duplicates while preserving order
     creatures = list(dict.fromkeys(creatures))
@@ -337,7 +337,6 @@ def validate_card_data(card_data: Dict[str, Any]) -> bool:
         return False
     
     # Validate abilities format and count
-    # Validate abilities format and count
     abilities = card_data.get('abilities', [])
     
     # Handle both string (joined with <br>) and list formats
@@ -410,14 +409,11 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
     for attempt in range(max_attempts):
         try:
             # Log that we're generating card data (not image)
-            logger.info("Generating card data with Gemini...")
+            logger.info("Generating card data with DreamBees LLM...")
 
-            response = client.models.generate_content(
-                model='gemini-2.0-flash-exp',
-                contents=prompt + "\nIMPORTANT: Response must be valid JSON only, no additional text."
-            )
-
-            card_data_str = response.text.strip()
+            card_data_str = generate_content(
+                prompt + "\nIMPORTANT: Response must be valid JSON only, no additional text."
+            ).strip()
             logger.debug(f"Raw card data from Gemini (attempt {attempt + 1}): {card_data_str}")
 
             # Try to extract JSON if there's any surrounding text
@@ -513,19 +509,11 @@ def generate_card_image(prompt: str) -> str:
         if 'image_url' not in r:
             raise ValueError("No image URL returned from DreamBees API")
         
+        
         image_url = r['image_url']
         
-        logger.info(f"Fetching image from: {image_url}")
-        image_response = requests.get(image_url)
-        image_response.raise_for_status()
-        
-        image_file = io.BytesIO(image_response.content)
-        
-        # Upload image to Backblaze
-        uploaded_image_url = upload_image(image_file, 'card_image.png')
-        logger.info(f"Card image fetched and uploaded successfully: {uploaded_image_url}")
-        return uploaded_image_url
-    
+        logger.info(f"Card image URL received successfully: {image_url}")
+        return image_url
     except requests.exceptions.RequestException as e:
         logger.error(f"Error during Stable Diffusion API request: {e}")
         raise ValueError(f"Failed to generate image: {str(e)}")
