@@ -201,9 +201,9 @@ class Card(Base):
     card_number = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Foreign key to user
-    user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     
+    # Foreign key to user
+    user_id = Column(String, ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
     # Relationships
     user = relationship("User", back_populates="cards")
     images = relationship("CardImage", back_populates="card", cascade="all, delete-orphan")

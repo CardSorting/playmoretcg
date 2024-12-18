@@ -54,7 +54,7 @@ configure_routers(app)
 # Admin user IDs
 ADMIN_USERS = {'fhn34qtflHh9rVDJsrlDnlUxn3M2'}  # Admin user
 
-async def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[int]:
+async def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[str]:
     """Get the current user from the Firebase ID token and sync with the database."""
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -76,9 +76,9 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> O
                 'display_name': firebase_user.display_name,
                 'last_login': datetime.utcnow()
             }
-            update_user(int(user_id), user_data, db=db)
+            update_user(user_id, user_data, db=db)
             logger.info(f"Authenticated user: {user_id}")
-            return int(user_id)
+            return str(user_id)
         except auth.UserNotFoundError:
             logger.error(f"User {user_id} not found in Firebase")
             return None
@@ -100,10 +100,10 @@ def get_template_context(request: Request) -> Dict[str, Any]:
 @app.get("/create", response_class=HTMLResponse)
 async def create_card_form(
     request: Request,
-    user_id: Optional[int] = Depends(get_current_user)
+    user_id: Optional[str] = Depends(get_current_user)
 ):
     """Admin-only card creation form."""
-    if not user_id or str(user_id) not in ADMIN_USERS:
+    if not user_id or user_id not in ADMIN_USERS:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     return templates.TemplateResponse(
@@ -111,20 +111,20 @@ async def create_card_form(
         get_template_context(request)
     )
 
-@app.post("/create")
 async def create_card_handler(
     request: Request,
     rarity: str = Form(None),
-    user_id: Optional[int] = Depends(get_current_user),
+    user_id: Optional[str] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Admin-only card creation."""
-    if not user_id or str(user_id) not in ADMIN_USERS:
+    if not user_id or user_id not in ADMIN_USERS:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
         # Generate card data
         card_data = card_generator.generate_card(rarity)
+        card_data['user_id'] = None  # Created cards start unclaimed
         card_data['user_id'] = None  # Created cards start unclaimed
         
         # Generate and upload image
@@ -132,7 +132,7 @@ async def create_card_handler(
         filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
         
         # Create card in database
-        card = create_card(card_data, image_url, filename, db=db)
+        card = create_card(card_data, image_url, filename, db=db, user_id=None)
         
         # Redirect to the created card
         return RedirectResponse(
@@ -176,10 +176,9 @@ async def explore(request: Request, db: Session = Depends(get_db)):
         context["error"] = "Unable to load cards"
         return templates.TemplateResponse("explore.html", context)
 
-@app.get("/collection", response_class=HTMLResponse)
 async def collection(
     request: Request,
-    user_id: Optional[int] = Depends(get_current_user),
+    user_id: Optional[str] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """User's card collection."""
@@ -193,6 +192,7 @@ async def collection(
         return templates.TemplateResponse("cards/list.html", context)
     except Exception as e:
         logger.error(f"Error in collection route: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/sign-in")
@@ -229,18 +229,17 @@ async def sign_in_post(request: Request, db: Session = Depends(get_db)):
             'display_name': firebase_user.display_name,
             'last_login': datetime.utcnow()
         }
-        create_user(int(user_id), user_data, db=db)
+        create_user(user_id, user_data, db=db)
         
         return JSONResponse({"status": "success"})
     except Exception as e:
         logger.error(f"Error in sign-in post route: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/cards/{card_id}", response_class=HTMLResponse)
 async def view_card(
     request: Request,
     card_id: int,
-    user_id: Optional[int] = Depends(get_current_user),
+    user_id: Optional[str] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """View a specific card."""
@@ -252,17 +251,18 @@ async def view_card(
         raise HTTPException(status_code=404, detail="Card not found")
         
     # Allow admins to view any card, but regular users can only view their own
-    if str(user_id) not in ADMIN_USERS and card.get('user_id') != user_id:
+    if user_id not in ADMIN_USERS and card.get('user_id') != user_id:
         raise HTTPException(status_code=404, detail="Card not found")
     
     context = get_template_context(request)
     context["card"] = card
     return templates.TemplateResponse("cards/card.html", context)
+    return templates.TemplateResponse("cards/card.html", context)
 
 @app.get("/packs", response_class=HTMLResponse)
 async def open_pack_form(
     request: Request,
-    user_id: Optional[int] = Depends(get_current_user)
+    user_id: Optional[str] = Depends(get_current_user)
 ):
     """Pack opening form."""
     if not user_id:
@@ -273,10 +273,9 @@ async def open_pack_form(
         get_template_context(request)
     )
 
-@app.post("/packs")
 async def open_pack_action(
     request: Request,
-    user_id: Optional[int] = Depends(get_current_user),
+    user_id: Optional[str] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Handle pack opening."""
@@ -297,12 +296,12 @@ async def open_pack_action(
     except Exception as e:
         logger.error(f"Error opening pack: {e}")
         raise HTTPException(status_code=500, detail="Failed to open pack")
+        raise HTTPException(status_code=500, detail="Failed to open pack")
 
-@app.get("/packs/result", response_class=HTMLResponse)
 async def pack_result(
     request: Request,
     card_ids: List[int],
-    user_id: Optional[int] = Depends(get_current_user),
+    user_id: Optional[str] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Display pack opening results."""
@@ -327,6 +326,7 @@ async def pack_result(
         return templates.TemplateResponse("cards/pack_result.html", context)
     except Exception as e:
         logger.error(f"Error displaying pack result: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@
                         } else {
                             window.location.href = '/collection';
                         }
-                        return false;
+                        return true;
                     } catch (error) {
                         console.error('Error in sign in success:', error);
                         alert('Error during sign in. Please try again.');
@@ -61,6 +61,7 @@
             signInFlow: 'popup',
             tosUrl: '/terms',
             privacyPolicyUrl: '/privacy',
+            signInSuccessUrl: '/collection',
             // Disable auto sign-in
             credentialHelper: firebaseui.auth.CredentialHelper.NONE
         };
