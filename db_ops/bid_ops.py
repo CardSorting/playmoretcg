@@ -1,8 +1,8 @@
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from firestore_db_ops.firestore_init import get_db, bid_to_dict, logger, Bid, Listing, ListingType, ListingStatus, Card, User
+from db_ops.firestore_init import get_db, bid_to_dict, logger, Bid, Listing, ListingType, ListingStatus, Card, User
 from models import ListingDuration
-from firestore_db_ops.user_ops import deduct_credits, add_credits, get_user
+from db_ops.user_ops import deduct_credits, add_credits, get_user
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, desc
 from sqlalchemy.exc import NoResultFound
@@ -11,7 +11,7 @@ def create_bid(listing_id: int, bidder_id: int, amount: float, db: Session = nex
     """Create a new bid for an auction listing."""
     try:
         # Get listing
-        from firestore_db_ops.listing_ops import get_listing
+        from db_ops.listing_ops import get_listing
         listing = get_listing(listing_id, db=db)
         if not listing:
             raise ValueError("Listing not found")
@@ -87,7 +87,7 @@ def get_listing_bids(listing_id: int, db: Session = next(get_db())) -> List[Dict
 def finalize_auction(listing_id: int, db: Session = next(get_db())) -> Dict[str, Any]:
     """Finalize an auction when it expires."""
     try:
-        from firestore_db_ops.listing_ops import get_listing
+        from db_ops.listing_ops import get_listing
         listing = get_listing(listing_id, db=db)
         if not listing:
             raise ValueError("Listing not found")

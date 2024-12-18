@@ -1,8 +1,8 @@
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from firestore_db_ops.firestore_init import get_db, listing_to_dict, logger, Listing, ListingType, ListingStatus, Card, User
+from db_ops.firestore_init import get_db, listing_to_dict, logger, Listing, ListingType, ListingStatus, Card, User
 from models import ListingDuration
-from firestore_db_ops.bid_ops import finalize_auction, get_listing_bids
+from db_ops.bid_ops import finalize_auction, get_listing_bids
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from sqlalchemy.exc import NoResultFound
@@ -11,7 +11,7 @@ def create_listing(card_id: int, seller_id: int, price: float, duration: str, li
     """Create a new listing for a card."""
     try:
         # Check if card exists and belongs to seller
-        from firestore_db_ops.card_ops import get_card
+        from db_ops.card_ops import get_card
         card = get_card(card_id, db=db)
         if not card or card.get('user_id') != seller_id:
             raise ValueError("Card not found or doesn't belong to seller")
@@ -81,13 +81,13 @@ def get_active_listings(limit: int = 20, listing_type: Optional[str] = None, db:
         listing_data['time_left'] = str(listing_data['expires_at'] - now)
         
         # Get card details
-        from firestore_db_ops.card_ops import get_card
+        from db_ops.card_ops import get_card
         card = get_card(listing_data['card_id'], db=db)
         if card:
             listing_data['card'] = card
             
         # Get seller details
-        from firestore_db_ops.user_ops import get_user
+        from db_ops.user_ops import get_user
         seller = get_user(listing_data['seller_id'], db=db)
         if seller:
             listing_data['seller'] = {

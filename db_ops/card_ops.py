@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import random
-from firestore_db_ops.firestore_init import get_db, card_to_dict, logger, Card, User
+from db_ops.firestore_init import get_db, card_to_dict, logger, Card, User
 from models import Rarity
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -117,7 +117,7 @@ def open_pack(user_id: int, pack_cost: int = 50, db: Session = next(get_db())) -
         pack_cards.extend(common_cards)
         claimed_ids.extend([card['id'] for card in common_cards])
 
-        from firestore_db_ops.user_ops import deduct_credits
+        from db_ops.user_ops import deduct_credits
         if not deduct_credits(user_id, pack_cost, db=db):
             logger.error(f"Insufficient credits for user {user_id}. Pack costs {pack_cost} credits.")
             raise ValueError(f"Insufficient credits. Pack costs {pack_cost} credits.")

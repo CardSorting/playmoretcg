@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any
-from firestore_db_ops.firestore_init import get_db, user_to_dict, logger, User
+from db_ops.firestore_init import get_db, user_to_dict, logger, User
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
