@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, Depends, HTTPException, Form
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -328,6 +329,11 @@ async def pack_result(
         logger.error(f"Error displaying pack result: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: HTTPException):
+    """Custom 404 error handler."""
+    return templates.TemplateResponse("404.html", get_template_context(request), status_code=404)
 
 if __name__ == "__main__":
     import uvicorn
