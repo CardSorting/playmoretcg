@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Check if cards_new table exists and drop it if it does
     conn = op.get_bind()
-    if conn.dialect.has_table(conn, 'cards_new'):
+    if sa.inspect(conn).has_table('cards_new'):
         op.drop_table('cards_new')
 
     # Create new table with desired schema
@@ -64,7 +64,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Check if cards_new table exists and drop it if it does
     conn = op.get_bind()
-    if conn.dialect.has_table(conn, 'cards_new'):
+    if sa.inspect(conn).has_table('cards_new'):
         op.drop_table('cards_new')
 
     # Create new table with desired schema
