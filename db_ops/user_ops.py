@@ -1,5 +1,6 @@
 from typing import Optional, Dict, Any
-from db_ops.firestore_init import get_db, user_to_dict, logger, User
+from database import get_db
+from models import User
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -10,8 +11,7 @@ def get_user(user_id, db: Session = next(get_db())) -> Optional[Dict[str, Any]]:
 
 def create_user(user_id, user_data: Dict[str, Any], db: Session = next(get_db())) -> Dict[str, Any]:
     """Create a new user."""
-    user_dict = user_to_dict(user_data)
-    user = User(**user_dict)
+    user = User(**user_data)
     user.id = user_id
     db.add(user)
     db.commit()
@@ -22,8 +22,7 @@ def update_user(user_id, user_data: Dict[str, Any], db: Session = next(get_db())
     """Update user data."""
     user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
     if user:
-        user_dict = user_to_dict(user_data)
-        for key, value in user_dict.items():
+        for key, value in user_data.items():
             setattr(user, key, value)
         db.commit()
         db.refresh(user)

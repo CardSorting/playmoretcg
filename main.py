@@ -176,6 +176,7 @@ async def explore(request: Request, db: Session = Depends(get_db)):
         context["error"] = "Unable to load cards"
         return templates.TemplateResponse("explore.html", context)
 
+@app.get("/collection", response_class=HTMLResponse)
 async def collection(
     request: Request,
     user_id: Optional[str] = Depends(get_current_user),
@@ -189,10 +190,9 @@ async def collection(
         cards = get_user_cards(user_id, db=db)
         context = get_template_context(request)
         context["cards"] = cards
-        return templates.TemplateResponse("cards/list.html", context)
+        return templates.TemplateResponse("cards/collection.html", context)
     except Exception as e:
         logger.error(f"Error in collection route: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/sign-in")

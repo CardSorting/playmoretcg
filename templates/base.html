@@ -231,7 +231,7 @@
 
         function signOut() {
             firebase.auth().signOut().then(() => {
-                window.location.href = '/explore';
+                window.location.href = '/';
             }).catch((error) => {
                 console.error('Sign Out Error:', error);
             });
