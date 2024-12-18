@@ -6,9 +6,9 @@ from datetime import datetime
 import logging
 import json
 from enum import Enum, auto
-from card_generator_1 import generate_card, generate_card_image
-import firestore_db
+from card_generator import generate_card, generate_card_image
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
+from firestore_db_ops.card_ops import create_card
 
 # Configure logging
 logging.basicConfig(
@@ -142,7 +142,7 @@ class CardGenerationQueue:
         wait=wait_exponential(multiplier=1, min=4, max=10),
         reraise=True
     )
-    async def _generate_card(self, task: Task) -> str:
+    async def _generate_card(self, task: Task) -> Dict[str, Any]:
         """Generate a card with retries."""
         try:
             task.update_state(TaskState.GENERATING)
@@ -155,13 +155,13 @@ class CardGenerationQueue:
             
             
             # Generate and upload image
-            image_url = generate_card_image(card_data)
+            image_url, b2_url = generate_card_image(card_data)
             filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
             task.update_state(TaskState.SAVING)
             
             
             # Create card in Firestore
-            card = firestore_db.create_card(card_data, b2_url, filename)
+            card = create_card(card_data, image_url, filename)
             return card
             
         except Exception as e:

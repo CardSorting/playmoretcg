@@ -2,13 +2,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import logging
 from models import ListingStatus
-from firestore_db import (
-    db, 
-    get_card, 
-    get_user, 
-    update_listing_status,
-    get_listing  # Import get_listing from firestore_db
-)
+from firestore_db_ops.listing_ops import get_listing, update_listing_status
+from firestore_db_ops.card_ops import get_card
+from firestore_db_ops.user_ops import get_user
+from firestore_db_ops.firestore_init import db
 
 # Configure logging
 logging.basicConfig(

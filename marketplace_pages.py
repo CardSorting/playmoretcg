@@ -4,7 +4,7 @@ from typing import Optional
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from fastapi.templating import Jinja2Templates
 import logging
-import firestore_db
+from firestore_db_ops.listing_ops import get_listing
 
 # Configure logging
 logging.basicConfig(
@@ -76,7 +76,7 @@ async def view_listing(
     if not user_id:
         return RedirectResponse(url="/sign-in")
     
-    listing = firestore_db.get_listing(listing_id)
+    listing = get_listing(listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
