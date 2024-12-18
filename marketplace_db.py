@@ -2,10 +2,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import logging
 from models import ListingStatus
-from firestore_db_ops.listing_ops import get_listing, update_listing_status
-from firestore_db_ops.card_ops import get_card
-from firestore_db_ops.user_ops import get_user
-from firestore_db_ops.firestore_init import get_db
+from db_ops.listing_ops import get_listing, update_listing_status
+from db_ops.card_ops import get_card
+from db_ops.user_ops import get_user
+from db_ops.firestore_init import get_db
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from sqlalchemy import select
@@ -21,7 +21,7 @@ def get_user_listings(user_id: int, status: Optional[str] = None, db: Session = 
     """Get user's listings with optional status filter."""
     try:
         # Build query
-        from firestore_db_ops.listing_ops import Listing
+        from db_ops.listing_ops import Listing
         query = select(Listing).filter(Listing.seller_id == user_id)
         if status:
             query = query.filter(Listing.status == ListingStatus(status))
@@ -75,7 +75,7 @@ def get_user_purchases(user_id: int, db: Session = Depends(get_db)) -> List[Dict
     """Get listings purchased by the user."""
     try:
         listings = []
-        from firestore_db_ops.listing_ops import Listing
+        from db_ops.listing_ops import Listing
         query = select(Listing).filter(Listing.buyer_id == user_id, Listing.status == ListingStatus.SOLD)
         listings_data = db.execute(query).scalars().all()
         
@@ -109,7 +109,7 @@ def get_user_active_bids(user_id: int, db: Session = Depends(get_db)) -> List[Di
         active_bids = []
         
         # Get all bids by the user
-        from firestore_db_ops.bid_ops import Bid
+        from db_ops.bid_ops import Bid
         bids_query = select(Bid).filter(Bid.bidder_id == user_id)
         bids_data = db.execute(bids_query).scalars().all()
         
@@ -143,7 +143,7 @@ def get_user_bid_history(user_id: int, db: Session = Depends(get_db)) -> List[Di
     """Get user's complete bid history."""
     try:
         bid_history = []
-        from firestore_db_ops.bid_ops import Bid
+        from db_ops.bid_ops import Bid
         query = select(Bid).filter(Bid.bidder_id == user_id)
         bids_data = db.execute(query).scalars().all()
         

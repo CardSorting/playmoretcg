@@ -6,9 +6,9 @@ from datetime import datetime
 import logging
 import json
 from enum import Enum, auto
-from card_generator import generate_card, generate_card_image
+from generator.card_generator import generate_card, generate_card_image
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
-from firestore_db_ops.card_ops import create_card
+from db_ops.card_ops import create_card
 
 # Configure logging
 logging.basicConfig(

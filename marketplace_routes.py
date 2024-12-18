@@ -4,7 +4,7 @@ import logging
 from models import ListingStatus
 from firebase_config import verify_firebase_token
 import marketplace_db
-from firestore_db_ops.firestore_init import get_db
+from db_ops.firestore_init import get_db
 from sqlalchemy.orm import Session
 
 # Configure logging

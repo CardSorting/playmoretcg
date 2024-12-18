@@ -4,9 +4,9 @@ import logging
 from typing import Dict, Any, Tuple
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from openai_config import openai_client
-from cardgenerator.card_data_utils import standardize_card_data, validate_card_data, get_rarity
-from cardgenerator.prompt_utils import generate_card_prompt, create_dalle_prompt
-from cardgenerator.image_utils import generate_card_image
+from generator.card_data_utils import standardize_card_data, validate_card_data, get_rarity
+from generator.prompt_utils import generate_card_prompt, create_dalle_prompt
+from generator.image_utils import generate_card_image
 from models import Rarity
 
 # Logging configuration
@@ -59,7 +59,7 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
             
             # Get themed elements based on colors
             if 'color' in card_data:
-                from cardgenerator.prompt_utils import get_themed_elements
+                from generator.prompt_utils import get_themed_elements
                 colors = card_data['color'] if isinstance(card_data['color'], list) else [card_data['color']]
                 card_data['themes'] = get_themed_elements(colors)
             

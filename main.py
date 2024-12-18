@@ -13,12 +13,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from firebase_admin import auth
-from cardgenerator import card_generator
+from generator import card_generator
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from router_config import configure_routers
-from firestore_db_ops.user_ops import update_user, create_user
-from firestore_db_ops.card_ops import create_card, get_random_cards, get_user_cards, get_card, open_pack
-from firestore_db_ops.firestore_init import get_db
+from db_ops.user_ops import update_user, create_user
+from db_ops.card_ops import create_card, get_random_cards, get_user_cards, get_card, open_pack
+from db_ops.firestore_init import get_db
 from sqlalchemy.orm import Session
 
 # Configure logging

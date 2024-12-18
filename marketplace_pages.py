@@ -4,8 +4,8 @@ from typing import Optional
 from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from fastapi.templating import Jinja2Templates
 import logging
-from firestore_db_ops.listing_ops import get_listing
-from firestore_db_ops.firestore_init import get_db
+from db_ops.listing_ops import get_listing
+from db_ops.firestore_init import get_db
 from sqlalchemy.orm import Session
 
 # Configure logging
