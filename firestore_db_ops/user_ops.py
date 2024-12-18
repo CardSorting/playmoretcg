@@ -1,72 +1,65 @@
 from typing import Optional, Dict, Any
-from firestore_db_ops.firestore_init import db, user_to_dict, logger
+from firestore_db_ops.firestore_init import get_db, user_to_dict, logger, User
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-def get_user(user_id: str) -> Optional[Dict[str, Any]]:
+def get_user(user_id: int, db: Session = next(get_db())) -> Optional[Dict[str, Any]]:
     """Get user by ID."""
-    doc = db.collection('users').document(user_id).get()
-    return doc.to_dict() if doc.exists else None
+    user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
+    return user.__dict__ if user else None
 
-def create_user(user_id: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
+def create_user(user_id: int, user_data: Dict[str, Any], db: Session = next(get_db())) -> Dict[str, Any]:
     """Create a new user."""
-    user_ref = db.collection('users').document(user_id)
     user_dict = user_to_dict(user_data)
-    user_ref.set(user_dict)
-    return user_dict
+    user = User(**user_dict)
+    user.id = user_id
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user.__dict__
 
-def update_user(user_id: str, user_data: Dict[str, Any]) -> Dict[str, Any]:
+def update_user(user_id: int, user_data: Dict[str, Any], db: Session = next(get_db())) -> Dict[str, Any]:
     """Update user data."""
-    user_ref = db.collection('users').document(user_id)
-    user_dict = user_to_dict(user_data)
-    user_ref.update(user_dict)
-    return user_dict
+    user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
+    if user:
+        user_dict = user_to_dict(user_data)
+        for key, value in user_dict.items():
+            setattr(user, key, value)
+        db.commit()
+        db.refresh(user)
+        return user.__dict__
+    return None
 
-def delete_user(user_id: str) -> bool:
+def delete_user(user_id: int, db: Session = next(get_db())) -> bool:
     """Delete user and all their cards."""
-    batch = db.batch()
-    
-    # Delete user document
-    user_ref = db.collection('users').document(user_id)
-    batch.delete(user_ref)
-    
-    # Delete all user's cards
-    cards = db.collection('cards').where('user_id', '==', user_id).stream()
-    for card in cards:
-        batch.delete(card.reference)
-    
-    batch.commit()
-    return True
+    user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
+    if user:
+        db.delete(user)
+        db.commit()
+        return True
+    return False
 
-def get_user_credits(user_id: str) -> int:
+def get_user_credits(user_id: int, db: Session = next(get_db())) -> int:
     """Get user's current credit balance."""
-    user = get_user(user_id)
-    return user.get('credits', 0) if user else 0
+    user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
+    return user.credits if user else 0
 
-def add_credits(user_id: str, amount: int) -> int:
+def add_credits(user_id: int, amount: int, db: Session = next(get_db())) -> int:
     """Add credits to user's balance."""
-    user_ref = db.collection('users').document(user_id)
-    current_credits = get_user_credits(user_id)
-    new_balance = current_credits + amount
-    user_ref.update({'credits': new_balance})
-    return new_balance
+    user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
+    if user:
+        user.credits += amount
+        db.commit()
+        db.refresh(user)
+        return user.credits
+    return 0
 
-def deduct_credits(user_id: str, amount: int, transaction=None) -> bool:
+def deduct_credits(user_id: int, amount: int, db: Session = next(get_db())) -> bool:
     """Deduct credits from user's balance if sufficient funds exist."""
-    user_ref = db.collection('users').document(user_id)
-    
-    if transaction:
-        user_doc = transaction.get(user_ref)
-        if not user_doc.exists:
-            return False
-        current_credits = user_doc.to_dict().get('credits', 0)
-        if current_credits >= amount:
-            new_balance = current_credits - amount
-            transaction.update(user_ref, {'credits': new_balance})
-            return True
-        return False
-    else:
-        current_credits = get_user_credits(user_id)
-        if current_credits >= amount:
-            new_balance = current_credits - amount
-            user_ref.update({'credits': new_balance})
-            return True
-        return False
+    user = db.execute(select(User).filter(User.id == user_id)).scalar_one_or_none()
+    if user and user.credits >= amount:
+        user.credits -= amount
+        db.commit()
+        db.refresh(user)
+        return True
+    return False

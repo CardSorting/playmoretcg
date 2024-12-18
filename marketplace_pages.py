@@ -5,6 +5,8 @@ from firebase_config import verify_firebase_token, FIREBASE_CONFIG
 from fastapi.templating import Jinja2Templates
 import logging
 from firestore_db_ops.listing_ops import get_listing
+from firestore_db_ops.firestore_init import get_db
+from sqlalchemy.orm import Session
 
 # Configure logging
 logging.basicConfig(
@@ -18,7 +20,7 @@ templates = Jinja2Templates(directory="templates")
 
 router = APIRouter()
 
-async def get_current_user(request: Request) -> Optional[str]:
+async def get_current_user(request: Request) -> Optional[int]:
     """Get the current user from the Firebase ID token."""
     auth_token = request.cookies.get("auth_token")
     if not auth_token:
@@ -26,7 +28,7 @@ async def get_current_user(request: Request) -> Optional[str]:
     
     try:
         user_id = await verify_firebase_token(auth_token)
-        return user_id if user_id else None
+        return int(user_id) if user_id else None
     except Exception as e:
         logger.error(f"Token verification error: {str(e)}")
         return None
@@ -41,7 +43,7 @@ def get_template_context(request: Request) -> dict:
 @router.get("/marketplace", response_class=HTMLResponse)
 async def marketplace(
     request: Request,
-    user_id: Optional[str] = Depends(get_current_user)
+    user_id: Optional[int] = Depends(get_current_user)
 ):
     """Marketplace main page."""
     if not user_id:
@@ -55,7 +57,7 @@ async def marketplace(
 @router.get("/marketplace/my-listings", response_class=HTMLResponse)
 async def my_listings(
     request: Request,
-    user_id: Optional[str] = Depends(get_current_user)
+    user_id: Optional[int] = Depends(get_current_user)
 ):
     """User's listing management page."""
     if not user_id:
@@ -69,14 +71,15 @@ async def my_listings(
 @router.get("/marketplace/{listing_id}", response_class=HTMLResponse)
 async def view_listing(
     request: Request,
-    listing_id: str,
-    user_id: Optional[str] = Depends(get_current_user)
+    listing_id: int,
+    user_id: Optional[int] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """View a specific listing."""
     if not user_id:
         return RedirectResponse(url="/sign-in")
     
-    listing = get_listing(listing_id)
+    listing = get_listing(listing_id, db=db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     

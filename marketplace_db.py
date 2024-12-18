@@ -5,7 +5,10 @@ from models import ListingStatus
 from firestore_db_ops.listing_ops import get_listing, update_listing_status
 from firestore_db_ops.card_ops import get_card
 from firestore_db_ops.user_ops import get_user
-from firestore_db_ops.firestore_init import db
+from firestore_db_ops.firestore_init import get_db
+from sqlalchemy.orm import Session
+from fastapi import Depends
+from sqlalchemy import select
 
 # Configure logging
 logging.basicConfig(
@@ -14,27 +17,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_user_listings(user_id: str, status: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_user_listings(user_id: int, status: Optional[str] = None, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Get user's listings with optional status filter."""
     try:
         # Build query
-        query = db.collection('listings').where('seller_id', '==', user_id)
+        from firestore_db_ops.listing_ops import Listing
+        query = select(Listing).filter(Listing.seller_id == user_id)
         if status:
-            query = query.where('status', '==', status)
+            query = query.filter(Listing.status == ListingStatus(status))
         
         listings = []
-        for doc in query.stream():
-            listing_data = doc.to_dict()
-            listing_data['id'] = doc.id
+        listings_data = db.execute(query).scalars().all()
+        for listing in listings_data:
+            listing_data = listing.__dict__
             
             # Get card details
-            card = get_card(listing_data['card_id'])
+            card = get_card(listing_data['card_id'], db=db)
             if card:
                 listing_data['card'] = card
                 
             # Get buyer details if sold
             if listing_data.get('buyer_id'):
-                buyer = get_user(listing_data['buyer_id'])
+                buyer = get_user(listing_data['buyer_id'], db=db)
                 if buyer:
                     listing_data['buyer'] = {
                         'id': listing_data['buyer_id'],
@@ -42,7 +46,7 @@ def get_user_listings(user_id: str, status: Optional[str] = None) -> List[Dict[s
                     }
             
             # Get seller details
-            seller = get_user(listing_data['seller_id'])
+            seller = get_user(listing_data['seller_id'], db=db)
             if seller:
                 listing_data['seller'] = {
                     'id': listing_data['seller_id'],
@@ -50,15 +54,14 @@ def get_user_listings(user_id: str, status: Optional[str] = None) -> List[Dict[s
                 }
             
             # Calculate time left for active listings
-            if listing_data['status'] == ListingStatus.ACTIVE.value:
-                expires_at = listing_data['expires_at'].replace(tzinfo=None)
+            if listing_data['status'] == ListingStatus.OPEN:
                 now = datetime.utcnow()
-                if now > expires_at:
-                    update_listing_status(doc.id, ListingStatus.EXPIRED.value)
+                if now > listing_data['expires_at']:
+                    update_listing_status(listing.id, ListingStatus.EXPIRED.value, db=db)
                     listing_data['status'] = ListingStatus.EXPIRED.value
                     listing_data['time_left'] = "Expired"
                 else:
-                    listing_data['time_left'] = str(expires_at - now)
+                    listing_data['time_left'] = str(listing_data['expires_at'] - now)
             
             listings.append(listing_data)
         
@@ -68,25 +71,24 @@ def get_user_listings(user_id: str, status: Optional[str] = None) -> List[Dict[s
         logger.error(f"Error getting user listings: {e}")
         raise
 
-def get_user_purchases(user_id: str) -> List[Dict[str, Any]]:
+def get_user_purchases(user_id: int, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Get listings purchased by the user."""
     try:
         listings = []
-        query = db.collection('listings').where(
-            'buyer_id', '==', user_id
-        ).where('status', '==', ListingStatus.SOLD.value)
+        from firestore_db_ops.listing_ops import Listing
+        query = select(Listing).filter(Listing.buyer_id == user_id, Listing.status == ListingStatus.SOLD)
+        listings_data = db.execute(query).scalars().all()
         
-        for doc in query.stream():
-            listing_data = doc.to_dict()
-            listing_data['id'] = doc.id
+        for listing in listings_data:
+            listing_data = listing.__dict__
             
             # Get card details
-            card = get_card(listing_data['card_id'])
+            card = get_card(listing_data['card_id'], db=db)
             if card:
                 listing_data['card'] = card
                 
             # Get seller details
-            seller = get_user(listing_data['seller_id'])
+            seller = get_user(listing_data['seller_id'], db=db)
             if seller:
                 listing_data['seller'] = {
                     'id': listing_data['seller_id'],
@@ -101,28 +103,28 @@ def get_user_purchases(user_id: str) -> List[Dict[str, Any]]:
         logger.error(f"Error getting user purchases: {e}")
         raise
 
-def get_user_active_bids(user_id: str) -> List[Dict[str, Any]]:
+def get_user_active_bids(user_id: int, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Get user's active bids on auction listings."""
     try:
         active_bids = []
         
         # Get all bids by the user
-        bids_query = db.collection('bids').where('bidder_id', '==', user_id)
+        from firestore_db_ops.bid_ops import Bid
+        bids_query = select(Bid).filter(Bid.bidder_id == user_id)
+        bids_data = db.execute(bids_query).scalars().all()
         
-        for bid_doc in bids_query.stream():
-            bid_data = bid_doc.to_dict()
-            bid_data['id'] = bid_doc.id
+        for bid in bids_data:
+            bid_data = bid.__dict__
             
             # Get listing details
-            listing = get_listing(bid_data['listing_id'])
-            if listing and listing['status'] == ListingStatus.ACTIVE.value:
+            listing = get_listing(bid_data['listing_id'], db=db)
+            if listing and listing['status'] == ListingStatus.OPEN.value:
                 # Check if listing hasn't expired
-                expires_at = listing['expires_at'].replace(tzinfo=None)
-                if datetime.utcnow() <= expires_at:
+                if datetime.utcnow() <= listing['expires_at']:
                     bid_data['listing'] = listing
                     
                     # Get bidder details
-                    bidder = get_user(bid_data['bidder_id'])
+                    bidder = get_user(bid_data['bidder_id'], db=db)
                     if bidder:
                         bid_data['bidder'] = {
                             'id': bid_data['bidder_id'],
@@ -137,23 +139,24 @@ def get_user_active_bids(user_id: str) -> List[Dict[str, Any]]:
         logger.error(f"Error getting user active bids: {e}")
         raise
 
-def get_user_bid_history(user_id: str) -> List[Dict[str, Any]]:
+def get_user_bid_history(user_id: int, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Get user's complete bid history."""
     try:
         bid_history = []
-        query = db.collection('bids').where('bidder_id', '==', user_id)
+        from firestore_db_ops.bid_ops import Bid
+        query = select(Bid).filter(Bid.bidder_id == user_id)
+        bids_data = db.execute(query).scalars().all()
         
-        for doc in query.stream():
-            bid_data = doc.to_dict()
-            bid_data['id'] = doc.id
+        for bid in bids_data:
+            bid_data = bid.__dict__
             
             # Get listing details
-            listing = get_listing(bid_data['listing_id'])
+            listing = get_listing(bid_data['listing_id'], db=db)
             if listing:
                 bid_data['listing'] = listing
                 
                 # Get bidder details
-                bidder = get_user(bid_data['bidder_id'])
+                bidder = get_user(bid_data['bidder_id'], db=db)
                 if bidder:
                     bid_data['bidder'] = {
                         'id': bid_data['bidder_id'],
@@ -164,7 +167,7 @@ def get_user_bid_history(user_id: str) -> List[Dict[str, Any]]:
         
         return sorted(
             bid_history,
-            key=lambda x: x['listing']['expires_at'].replace(tzinfo=None),
+            key=lambda x: x['listing']['expires_at'],
             reverse=True
         )
         
